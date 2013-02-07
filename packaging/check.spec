@@ -7,7 +7,6 @@ Url:            http://check.sourceforge.net/
 Group:          Development/Libraries/C and C++
 Source:         %{name}-%{version}.tar.bz2
 Source99:       baselibs.conf
-BuildRoot:      %{_tmppath}/%{name}-%{version}-build
 BuildRequires:  pkg-config
 
 %description
@@ -42,11 +41,10 @@ export CFLAGS="%{optflags} -std=gnu99"
 export CXXFLAGS="%{optflags} -std=gnu99"
 export FFLAGS="%{optflags} -std=gnu99"
 %configure --disable-static --with-pic
-make %{?_smp_mflags} docdir=%{buildroot}/%{_docdir}/%{name}
+make %{?_smp_mflags} 
 
 %install
-%makeinstall docdir=%{buildroot}/%{_docdir}/%{name}
-%{__cp} -a AUTHORS COPYING.LESSER THANKS TODO %{buildroot}/%{_docdir}/%{name}
+%make_install 
 %{__rm} -f %{buildroot}%{_libdir}/*.la
 
 %post -p /sbin/ldconfig
@@ -56,7 +54,7 @@ make %{?_smp_mflags} docdir=%{buildroot}/%{_docdir}/%{name}
 
 %files
 %defattr (-, root, root)
-%doc %dir %{_docdir}/%{name}
+%license COPYING.*
 %doc %{_docdir}/%{name}/[ACNRST]*
 %{_libdir}/*.so.*
 
@@ -68,6 +66,5 @@ make %{?_smp_mflags} docdir=%{buildroot}/%{_docdir}/%{name}
 %doc %{_infodir}/%{name}.info*
 %{_libdir}/*.so
 %{_libdir}/pkgconfig/*.pc
-%doc %{_docdir}/%{name}/example
 
 %changelog
