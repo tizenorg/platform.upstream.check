@@ -7,6 +7,7 @@ Url:            http://check.sourceforge.net/
 Group:          Development/Libraries/C and C++
 Source:         %{name}-%{version}.tar.bz2
 Source99:       baselibs.conf
+Source1001: 	check.manifest
 BuildRequires:  pkg-config
 
 %description
@@ -35,6 +36,7 @@ code editors and IDEs.
 
 %prep
 %setup -q
+cp %{SOURCE1001} .
 
 %build
 export CFLAGS="%{optflags} -std=gnu99"
@@ -53,11 +55,13 @@ make %{?_smp_mflags}
 
 
 %files
+%manifest %{name}.manifest
 %defattr (-, root, root)
 %license COPYING.*
 %{_libdir}/*.so.*
 
 %files devel
+%manifest %{name}.manifest
 %defattr (-, root, root)
 %dir %{_datadir}/aclocal
 %{_datadir}/aclocal/*.m4
