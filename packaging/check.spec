@@ -1,13 +1,13 @@
 Name:           check
-Version:        0.9.8
-Release:        3
+Version:        0.9.12
+Release:        0
 License:        LGPL-2.1+
 Summary:        Unit Test Framework for C
 Url:            http://check.sourceforge.net/
 Group:          Development/Libraries/C and C++
 Source:         %{name}-%{version}.tar.bz2
 Source99:       baselibs.conf
-Source1001: 	check.manifest
+Source1001:     check.manifest
 BuildRequires:  pkg-config
 
 %description
@@ -43,10 +43,10 @@ export CFLAGS="%{optflags} -std=gnu99"
 export CXXFLAGS="%{optflags} -std=gnu99"
 export FFLAGS="%{optflags} -std=gnu99"
 %configure --disable-static --with-pic
-make %{?_smp_mflags} 
+make %{?_smp_mflags}
 
 %install
-%make_install 
+%make_install
 
 %remove_docs
 %post -p /sbin/ldconfig
@@ -59,6 +59,8 @@ make %{?_smp_mflags}
 %defattr (-, root, root)
 %license COPYING.*
 %{_libdir}/*.so.*
+%{_bindir}/*
+
 
 %files devel
 %manifest %{name}.manifest
@@ -69,4 +71,4 @@ make %{?_smp_mflags}
 %{_libdir}/*.so
 %{_libdir}/pkgconfig/*.pc
 
-%changelog
+
