@@ -1,3 +1,77 @@
+IT IS NOT NECESSARY TO UPDATE THIS FILE.
+
+PLEASE MAKE SURE TO LEAVE A GOOD SVN COMMIT MESSAGE.
+
+2010-04-08  Micah Cowan  <micah@cowan.name>
+
+	* configure.ac: Determine at configure time, how many
+	backslashes are needed in the second argument to Awk's built-in
+	"gsub" function in order to generate two backslashes.
+
+	* checkmk/checkmk.in: Replaced POSIX character-classes
+	with (roughly) equivalent character groups from pre-POSIX
+	syntax, to support pre-POSIX awk implementations.
+	(string_encode): Use configure-substituted AWK_GSUB_DBL_BSLASH
+	to determine how to substitute a doubled backslash in gsub.
+
+2010-04-03  Micah Cowan  <micah@cowan.name>
+
+	* checkmk/*: Added Awk program "checkmk", for eliminating
+	boilerplate work when writing unit test modules. Includes
+	documentation and tests.
+
+	* Makefile.am (SUBDIRS): Added checkmk.
+
+	* configure.ac: Added extra awk-detection logic for checkmk.
+
+	* NEWS: Updated with news about checkmk.
+
+	* AUTHORS (Patches): Added myself.
+
+2010-02-17  Jose E. Marchesi  <jemarch@gnu.org>
+
+	* tests/check_check_selective.c (make_selective_suite): New
+	function.
+	(selective_setup): New function.
+	(selective_teardown): New function.
+	New tests 'test_srunner_run_run_all, 'test_srunner_run_suite',
+	'test_srunner_run_no_suite', test_srunner_run_tcase',
+	'test_srunner_no_tcase', 'test_srunner_suite_tcase',
+	'test_srunner_suite_no_tcase', 'test_srunner_run_suite_env',
+	'test_srunner_run_no_suite_env', 'test_srunner_run_tcase_env',
+	'test_srunner_run_no_tcase_env', 'test_srunner_suite_tcase_env',
+	'test_srunner_suite_no_tcase_env'.
+
+	* tests/Makefile.am (check_check_SOURCES): Add
+	'check_check_selective.c'.
+
+	* tests/check_check_selective.c: New file.
+
+	* tests/check_check_main.c (main): Add the selective_suite to the
+	master suite.
+
+2010-02-10  Jose E. Marchesi  <jemarch@gnu.org>
+
+	* doc/check.texi (SRunner Output): Document 'srunner_run' and the
+	usage of CK_RUN_CASE and CK_RUN_SUITE environment variables.
+
+	* src/check_run.c (srunner_run): Use values of environment
+	variables CK_RUN_CASE and CK_RUN_SUITE.
+
+2010-02-02  Jose E. Marchesi  <jemarch@gnu.org>
+
+	* src/check.c (suite_tcase): New function that determines whether
+	a a given test suite contains a test case named after a given
+	string.
+
+	* src/check_run.c (srunner_run): New function, renamed from
+	'srunner_run_all', allowing selective running of an specific test
+	suite and/or test case.
+	(srunner_run_all): New function, invoking srunner_run internally
+	to provide backwards compatibility.
+
+	* src/check.h.in: Add prototype for srunner_run.
+
 2005-12-16 hugo303
 
 	* src/check_pack.c: Fixed buggy eprintf string.

@@ -1,3 +1,155 @@
+Mon Jan 20, 2014: Released Check 0.9.12
+  based on r1054 (2014-01-16 23:08:03 +0000)
+
+* Additional unit tests created for internal and external Check
+  APIs.
+
+* Check now compiled on Windows using MSVC when using CMake and
+  NMake. All unit tests pass, though shell script based ones need
+  to be run in the MSYS environment.
+
+* Check now compiles on Windows using Visual Studio 10
+  when using CMake. check_check passes when run from Visual Studios.
+
+* Always capture the start and end times of tests when using
+  NO_FORK mode. Previously the end time was not captured,
+  resulting in arbitrary durations being recorded when tests
+  failed. Bug #87.
+
+* Added additional configure script checks for support of
+  timer_create() on the target system. This allows for
+  OpenBSD to compile and run all Check's unit tests successfully. 
+
+* Added a unit test, check_mem_leaks, which can be used against
+  valgrind to test for memory leaks. No memory leaks were found.
+
+* Added tcase_add_loop_test support in checkm. Patch from patches #46. 
+
+* Add support for logging in Test Anything Protocol (TAP) format.
+
+* Refactor Check's assertions to be more like the assert() call in
+  assert.h, in that static source code analyzers can use gcc attributes
+  in the header to make assumptions about the flow of the code. See
+  feature request #29.
+
+* fix ck_assert_ptr_* causing const compilation warnings. Patch from
+  bug #91.
+
+Wed, Nov 4, 2013: Released Check 0.9.11
+  based on r856 (2013-11-04 02:09:21 +0000)
+
+* Check's unit tests pass when compiled out of the source tree.
+
+* Check compiles for Windows using the MinGW/msys environment (without using fork), and all unit tests pass.
+
+* Check compiles for Windows using the Cygwin environment, and all unit tests pass.
+
+* Check compiles for Windows using MinGW in Linux (without using fork), and all unit tests pass using wine 1.4.
+
+* Check compiles for Windows using MinGW-w64 in Linux (without using fork), and all unit tests pass using wine 1.4.
+
+* On systems without timer_settimer, use setitimer (if available) to get
+  subsecond unit test timeouts. If setitimer is unavailable, fallback
+  on alarm.
+
+Thu, Apr 18, 2013: Released Check 0.9.10
+  based on r743 (2013-04-18 11:27:03 +0200)
+
+* Support 64bit int for __ck_assert_int. Patch from bug #3599471
+
+* Add equivalent uint variants for __ck_assert_int. Patch from bug #3600433.
+
+* Detect if the system has a C99 compliant version of the printf related
+  functions for check to use, and if not use an implementation provided by
+  check.
+
+* Updated HACKING and release procedure in Makefile.am.
+
+* Detect if the system has clock_gettime() available, and if not use an
+  implementation provided by check. clock_gettime() is used to measure
+  test durations. The implementation for OSX uses OSX specific system calls 
+  to get the time. For all other systems, clock_gettime() does nothing.
+
+* Updated documentation in check.h to reference new check API.
+
+* Remove usage of deprecated fail(), fail_if(), and fail_unless() calls from
+  check's unit tests.
+
+* Fix implementation of putenv in check's libcompat for systems that do not
+  provide it.
+
+* Fix implementation of unsettenv in check's libcompat for systems that do
+  not provide it. 
+
+* Improvements to the new Check API: new comparison functions for pointers:
+  ck_assert_ptr_(eq|ne).
+
+* Test timeouts can now be in nanosecond precision. The tcase_set_timeout
+  call, and CK_DEFAULT_TIMEOUT and CK_TIMEOUT_MULTIPLIER environment
+  variables now can accept floating point arguments.
+
+* Cleanup compile warnings, patch #3579199 on SF.
+
+* Renamed Check's internal list functions to start with check_, patch #3448601 on SF.
+
+Mon, Oct 22, 2012: Released Check 0.9.9
+  based on r637 (2012-10-22 13:54:14 +0200)
+
+* Measure test duration and print in XML output.
+  Feature request #3521371 on SF, but reimplemented.
+
+* Added contrib/XML_for_JUnit.xsl from feature request #3521371 on SF.
+
+* Added support for setting log files via environment variables.
+  Patch #3576713 on SF.
+
+* Added better pkg-config and subunit support, patch #3417041 on SF.
+
+* Make tests/test_vars.in bourne shell compatible, bug #3472578 on SF.
+
+* Added ck_ prefix to mutex_lock variable, to avoid name clash on Solaris.
+  Solves bug #3472574 on SF.
+
+* In autoconf, request system extensions to generate 64-bit safe code,
+  solution from patch #2803433 on SF.
+
+* Fix for mutex deadlock when killing threads, patch #3564640 on SF.
+
+* Make XML output well-formed, solution from patch #3575642 on SF.
+  Solves bug #3485651 also.
+
+* Fix buggy duration calculation, bug #3575451 on SF. 
+
+* A more complete CMake / MSVC patch for those interested in pursuing
+  Windows development with Check and Visual Studio.  See
+  patches/mloskot.windows.patch.
+
+* Added instructions for improving the speed and output of `make
+  check' when using Automake.  See contrib/improved_make_check/.
+
+* Added a chapter in the documentation for selective running of tests.
+
+* Changed how the message pipe is read. Before, the whole file was copied to
+  RAM with realloc, giving problems with huge allocations for repetetive
+  tests, the problem was visible for a specific GStreamer test case.
+
+* Improvements to the new Check API: documentation, macros that allow
+  multiple evaluation, unit tests, and new
+  ck_assert_(str|int)_(lt|le|gt|ge) comparison functions.
+
+* Made the new Check API primary and use it to define macros from old Check API
+
+* Added checkmk, a tool for reducing "boilerplate coding" when writing
+  unit tests with check.
+
+* Added xslt link to xml output, added display of iteration field into xslt
+  stylesheet and moved it to directory accessible from web page root
+
+* Added longjmp to fail function to ensure that no code will be executed in test
+  function after failed assertion
+
+* Fix dead assignments and several possible NULL pointer dereferences
+
 Tue, Sep 22, 2009: Released Check 0.9.8
   based on r559 (2009-09-23 21:00).
 

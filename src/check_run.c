@@ -21,11 +21,13 @@
 #include "../lib/libcompat.h"
 
 #include <sys/types.h>
+#include <time.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
 #include <signal.h>
+#include <setjmp.h>
 
 #include "check.h"
 #include "check_error.h"
@@ -48,12 +50,14 @@ enum tf_type {
   CK_NOFORK_FIXTURE
 };
 
+
 /* all functions are defined in the same order they are declared.
    functions that depend on forking are gathered all together.
    non-static functions are at the end of the file. */
 static void srunner_run_init (SRunner *sr, enum print_output print_mode);
 static void srunner_run_end (SRunner *sr, enum print_output print_mode);
 static void srunner_iterate_suites (SRunner *sr,
+                                    const char *sname, const char *tcname,
 				    enum print_output print_mode);
 static void srunner_iterate_tcase_tfuns (SRunner *sr, TCase *tc);
 static void srunner_add_failure (SRunner *sr, TestResult *tf);
@@ -66,11 +70,12 @@ static void srunner_run_tcase (SRunner *sr, TCase *tc);
 static TestResult *tcase_run_tfun_nofork (SRunner *sr, TCase *tc, TF *tf, int i);
 static TestResult *receive_result_info_nofork (const char *tcname,
                                                const char *tname,
-                                               int iter);
+                                               int iter,
+                                               int duration);
 static void set_nofork_info (TestResult *tr);
 static char *pass_msg (void);
 
-#ifdef _POSIX_VERSION
+#if defined(HAVE_FORK) && HAVE_FORK==1
 static TestResult *tcase_run_tfun_fork (SRunner *sr, TCase *tc, TF *tf, int i);
 static TestResult *receive_result_info_fork (const char *tcname,
                                              const char *tname,
@@ -99,7 +104,7 @@ static void CK_ATTRIBUTE_UNUSED sig_handler(int sig_nr)
     break;
   }
 }
-#endif /* _POSIX_VERSION */
+#endif /* HAVE_FORK */
 
 #define MSG_LEN 100
 
@@ -120,6 +125,7 @@ static void srunner_run_end (SRunner *sr, enum print_output CK_ATTRIBUTE_UNUSED 
 }
 
 static void srunner_iterate_suites (SRunner *sr,
+                                    const char *sname, const char *tcname,
 				    enum print_output CK_ATTRIBUTE_UNUSED print_mode)
   
 {
@@ -128,16 +134,25 @@ static void srunner_iterate_suites (SRunner *sr,
   TCase *tc;
 
   slst = sr->slst;
-  
-  for (list_front(slst); !list_at_end(slst); list_advance(slst)) {
-    Suite *s = list_val(slst);
+
+  for (check_list_front(slst); !check_list_at_end(slst); check_list_advance(slst)) {
+    Suite *s = check_list_val(slst);
     
+    if (((sname != NULL) && (strcmp (sname, s->name) != 0))
+        || ((tcname != NULL) && (!suite_tcase (s, tcname))))
+      continue;
+
     log_suite_start (sr, s);
 
     tcl = s->tclst;
   
-    for (list_front(tcl);!list_at_end (tcl); list_advance (tcl)) {
-      tc = list_val (tcl);
+    for (check_list_front(tcl);!check_list_at_end (tcl); check_list_advance (tcl)) {
+      tc = check_list_val (tcl);
+
+      if ((tcname != NULL) && (strcmp (tcname, tc->name) != 0)) {
+          continue;
+        }
+
       srunner_run_tcase (sr, tc);
     }
     
@@ -153,36 +168,40 @@ static void srunner_iterate_tcase_tfuns (SRunner *sr, TCase *tc)
 
   tfl = tc->tflst;
   
-  for (list_front(tfl); !list_at_end (tfl); list_advance (tfl)) {
+  for (check_list_front(tfl); !check_list_at_end (tfl); check_list_advance (tfl)) {
     int i;
-    tfun = list_val (tfl);
+    tfun = check_list_val (tfl);
 
     for (i = tfun->loop_start; i < tfun->loop_end; i++)
     {
       log_test_start (sr, tc, tfun);
       switch (srunner_fork_status(sr)) {
       case CK_FORK:
-#ifdef _POSIX_VERSION
+#if defined(HAVE_FORK) && HAVE_FORK==1
         tr = tcase_run_tfun_fork (sr, tc, tfun, i);
-#else /* _POSIX_VERSION */
+#else /* HAVE_FORK */
         eprintf("This version does not support fork", __FILE__, __LINE__);
-#endif /* _POSIX_VERSION */
+#endif /* HAVE_FORK */
         break;
       case CK_NOFORK:
         tr = tcase_run_tfun_nofork (sr, tc, tfun, i);
         break;
+      case CK_FORK_GETENV:
       default:
         eprintf("Bad fork status in SRunner", __FILE__, __LINE__);
       }
-      srunner_add_failure (sr, tr);
-      log_test_end(sr, tr);
+
+      if ( NULL != tr ) {
+        srunner_add_failure (sr, tr);
+        log_test_end(sr, tr);
+      }
     }
   }
 }  
 
 static void srunner_add_failure (SRunner *sr, TestResult *tr)
 {  
-  list_add_end (sr->resultlst, tr);
+  check_list_add_end (sr->resultlst, tr);
   sr->stats->n_checked++; /* count checks during setup, test, and teardown */
   if (tr->rtype == CK_FAILURE)
     sr->stats->n_failed++;
@@ -202,12 +221,15 @@ static int srunner_run_unchecked_setup (SRunner *sr, TCase *tc)
 
   l = tc->unch_sflst;
 
-  for (list_front(l); !list_at_end(l); list_advance(l)) {
+  for (check_list_front(l); !check_list_at_end(l); check_list_advance(l)) {
     send_ctx_info(CK_CTX_SETUP);
-    f = list_val(l);
-    f->fun();
+    f = check_list_val(l);
 
-    tr = receive_result_info_nofork (tc->name, "unchecked_setup", 0);
+    if ( 0 == setjmp(error_jmp_buffer) ) {
+      f->fun();
+    }
+
+    tr = receive_result_info_nofork (tc->name, "unchecked_setup", 0, -1);
 
     if (tr->rtype != CK_PASS) {
       srunner_add_failure(sr, tr);
@@ -229,22 +251,28 @@ static TestResult * tcase_run_checked_setup (SRunner *sr, TCase *tc)
   List *l;
   Fixture *f;
   enum fork_status fstat = srunner_fork_status(sr);
-  
+
   l = tc->ch_sflst;
   if (fstat == CK_FORK) {
     send_ctx_info(CK_CTX_SETUP);
   }
-  
-  for (list_front(l); !list_at_end(l); list_advance(l)) {
+
+  for (check_list_front(l); !check_list_at_end(l); check_list_advance(l)) {
+    f = check_list_val(l);
+
     if (fstat == CK_NOFORK) {
       send_ctx_info(CK_CTX_SETUP);
+
+      if ( 0 == setjmp(error_jmp_buffer) ) {
+        f->fun();
+      }
+    } else {
+      f->fun();
     }
-    f = list_val(l);
-    f->fun();
 
     /* Stop the setup and return the failure if nofork mode. */
     if (fstat == CK_NOFORK) {
-      tr = receive_result_info_nofork (tc->name, "checked_setup", 0);
+      tr = receive_result_info_nofork (tc->name, "checked_setup", 0, -1);
       if (tr->rtype != CK_PASS) {
         break;
       }
@@ -263,8 +291,8 @@ static void srunner_run_teardown (List *l)
 {
   Fixture *f;
   
-  for (list_front(l); !list_at_end(l); list_advance(l)) {
-    f = list_val(l);
+  for (check_list_front(l); !check_list_at_end(l); check_list_advance(l)) {
+    f = check_list_val(l);
     send_ctx_info(CK_CTX_TEARDOWN);
     f->fun ();
   }
@@ -291,12 +319,18 @@ static void srunner_run_tcase (SRunner *sr, TCase *tc)
 static TestResult *tcase_run_tfun_nofork (SRunner *sr, TCase *tc, TF *tfun, int i)
 {
   TestResult *tr;
+  struct timespec ts_start={0,0}, ts_end={0,0};
   
   tr = tcase_run_checked_setup(sr, tc);
   if (tr == NULL) {
-    tfun->fn(i);
+    clock_gettime(check_get_clockid(), &ts_start);
+    if ( 0 == setjmp(error_jmp_buffer) ) {
+      tfun->fn(i);
+    }
+    clock_gettime(check_get_clockid(), &ts_end);
     tcase_run_checked_teardown(tc);
-    return receive_result_info_nofork(tc->name, tfun->name, i);
+    return receive_result_info_nofork(tc->name, tfun->name, i,
+                                      DIFF_IN_USEC(ts_start, ts_end));
   }
   
   return tr;
@@ -304,17 +338,21 @@ static TestResult *tcase_run_tfun_nofork (SRunner *sr, TCase *tc, TF *tfun, int 
 
 static TestResult *receive_result_info_nofork (const char *tcname,
                                                const char *tname,
-                                               int iter)
+                                               int iter,
+                                               int duration)
 {
   TestResult *tr;
 
   tr = receive_test_result(0);
-  if (tr == NULL)
+  if (tr == NULL) {
     eprintf("Failed to receive test result", __FILE__, __LINE__);
-  tr->tcname = tcname;
-  tr->tname = tname;
-  tr->iter = iter;
-  set_nofork_info(tr);
+  } else {
+    tr->tcname = tcname;
+    tr->tname = tname;
+    tr->iter = iter;
+    tr->duration = duration;
+    set_nofork_info(tr);
+  }
 
   return tr;
 }
@@ -331,17 +369,21 @@ static void set_nofork_info (TestResult *tr)
 
 static char *pass_msg (void)
 {
-  char *msg = emalloc(sizeof("Passed"));
-  strcpy (msg, "Passed");
-  return msg;
+  return strdup("Passed");
 }
 
-#ifdef _POSIX_VERSION
+#if defined(HAVE_FORK) && HAVE_FORK==1
 static TestResult *tcase_run_tfun_fork (SRunner *sr, TCase *tc, TF *tfun, int i)
 {
   pid_t pid_w;
   pid_t pid;
   int status = 0;
+  struct timespec ts_start = {0,0}, ts_end = {0,0};
+
+  timer_t timerid;
+  struct itimerspec timer_spec; 
+  TestResult * tr;
+
 
   pid = fork();
   if (pid == -1)
@@ -349,19 +391,46 @@ static TestResult *tcase_run_tfun_fork (SRunner *sr, TCase *tc, TF *tfun, int i)
   if (pid == 0) {
     setpgid(0, 0);
     group_pid = getpgrp();
-    tcase_run_checked_setup(sr, tc);
+    tr = tcase_run_checked_setup(sr, tc);
+    free(tr);
+    clock_gettime(check_get_clockid(), &ts_start);
     tfun->fn(i);
+    clock_gettime(check_get_clockid(), &ts_end);
     tcase_run_checked_teardown(tc);
+    send_duration_info(DIFF_IN_USEC(ts_start, ts_end));
     exit(EXIT_SUCCESS);
   } else {
     group_pid = pid;
   }
 
   alarm_received = 0;
-  alarm(tc->timeout);
-  do {
-    pid_w = waitpid(pid, &status, 0);
-  } while (pid_w == -1);
+
+  if(timer_create(check_get_clockid(),
+                  NULL /* fire SIGALRM if timer expires */,
+                  &timerid) == 0)
+  {
+    /* Set the timer to fire once */
+    timer_spec.it_value            = tc->timeout;
+    timer_spec.it_interval.tv_sec  = 0;
+    timer_spec.it_interval.tv_nsec = 0;
+    if(timer_settime (timerid, 0, &timer_spec, NULL) == 0)
+    {
+      do {
+        pid_w = waitpid(pid, &status, 0);
+      } while (pid_w == -1);
+    }
+    else
+    {
+      eprintf("Error in call to timer_settime:", __FILE__, __LINE__);
+    }
+    
+      /* If the timer has not fired, disable it */
+      timer_delete(timerid);
+  }
+  else
+  {
+    eprintf("Error in call to timer_create:", __FILE__, __LINE__);
+  }
   
   killpg(pid, SIGKILL); /* Kill remaining processes. */
 
@@ -377,12 +446,14 @@ static TestResult *receive_result_info_fork (const char *tcname,
   TestResult *tr;
 
   tr = receive_test_result(waserror(status, expected_signal));
-  if (tr == NULL)
+  if (tr == NULL) {
     eprintf("Failed to receive test result", __FILE__, __LINE__);
-  tr->tcname = tcname;
-  tr->tname = tname;
-  tr->iter = iter;
-  set_fork_info(tr, status, expected_signal, allowed_exit_value);
+  } else {
+    tr->tcname = tcname;
+    tr->tname = tname;
+    tr->iter = iter;
+    set_fork_info(tr, status, expected_signal, allowed_exit_value);
+  }
 
   return tr;
 }
@@ -399,23 +470,43 @@ static void set_fork_info (TestResult *tr, int status, int signal_expected, unsi
       if (alarm_received) {
         /* Got alarm instead of signal */
         tr->rtype = CK_ERROR;
+        if(tr->msg != NULL)
+        {
+          free(tr->msg);
+        }
         tr->msg = signal_error_msg(signal_received, signal_expected);
       } else {
         tr->rtype = CK_PASS;
+        if(tr->msg != NULL)
+        {
+          free(tr->msg);
+        }
         tr->msg = pass_msg();
       }
     } else if (signal_expected != 0) {
       /* signal received, but not the expected one */
       tr->rtype = CK_ERROR;
+      if(tr->msg != NULL)
+      {
+        free(tr->msg);
+      }
       tr->msg = signal_error_msg(signal_received, signal_expected);
     } else {
       /* signal received and none expected */
       tr->rtype = CK_ERROR;
+      if(tr->msg != NULL)
+      {
+        free(tr->msg);
+      }
       tr->msg = signal_msg(signal_received);
     }
   } else if (signal_expected == 0) {
     if (was_exit && exit_status == allowed_exit_value) {
       tr->rtype = CK_PASS;
+      if(tr->msg != NULL)
+      {
+        free(tr->msg);
+      }
       tr->msg = pass_msg();
     } else if (was_exit && exit_status != allowed_exit_value) {
       if (tr->msg == NULL) { /* early exit */
@@ -427,11 +518,19 @@ static void set_fork_info (TestResult *tr, int status, int signal_expected, unsi
     }
   } else { /* a signal was expected and none raised */
     if (was_exit) {
+      if(tr->msg != NULL)
+      {
+        free(tr->msg);
+      }
       tr->msg = exit_msg(exit_status);
       if (exit_status == allowed_exit_value)
-	tr->rtype = CK_FAILURE; /* normal exit status */
+      {
+        tr->rtype = CK_FAILURE; /* normal exit status */
+      }
       else
-	tr->rtype = CK_FAILURE; /* early exit */
+      {
+        tr->rtype = CK_FAILURE; /* early exit */
+      }
     }
   }
 }
@@ -485,23 +584,27 @@ static int waserror (int status, int signal_expected)
   return ((was_sig && (signal_received != signal_expected)) ||
           (was_exit && exit_status != 0));
 }
-#endif /* _POSIX_VERSION */
+#endif /* HAVE_FORK */
 
 enum fork_status srunner_fork_status (SRunner *sr)
 {
   if (sr->fstat == CK_FORK_GETENV) {
     char *env = getenv ("CK_FORK");
     if (env == NULL)
+#if defined(HAVE_FORK) && HAVE_FORK==1
       return CK_FORK;
+#else
+      return CK_NOFORK;
+#endif
     if (strcmp (env,"no") == 0)
       return CK_NOFORK;
     else {
-#ifdef _POSIX_VERSION
+#if defined(HAVE_FORK) && HAVE_FORK==1
       return CK_FORK;
-#else /* _POSIX_VERSION */
+#else /* HAVE_FORK */
       eprintf("This version does not support fork", __FILE__, __LINE__);
       return CK_NOFORK;
-#endif /* _POSIX_VERSION */
+#endif /* HAVE_FORK */
     }
   } else
     return sr->fstat;
@@ -509,15 +612,35 @@ enum fork_status srunner_fork_status (SRunner *sr)
 
 void srunner_set_fork_status (SRunner *sr, enum fork_status fstat)
 {
+#if !defined(HAVE_FORK) || HAVE_FORK==0
+  /* If fork() is unavailable, do not allow a fork mode to be set */
+  if (fstat != CK_NOFORK)
+  {
+	  eprintf("This version does not support fork", __FILE__, __LINE__);
+  }
+#endif /* ! HAVE_FORK */
   sr->fstat = fstat;
 }
 
 void srunner_run_all (SRunner *sr, enum print_output print_mode)
 {
-#ifdef _POSIX_VERSION
+  srunner_run (sr,
+               NULL,  /* All test suites.  */
+               NULL,  /* All test cases.   */
+               print_mode);
+}
+
+void srunner_run (SRunner *sr, const char *sname, const char *tcname, enum print_output print_mode)
+{
+#if defined(HAVE_SIGACTION) && defined(HAVE_FORK)
   struct sigaction old_action;
   struct sigaction new_action;
-#endif /* _POSIX_VERSION */
+#endif /* HAVE_SIGACTION && HAVE_FORK */
+
+  /*  Get the selected test suite and test case from the
+      environment.  */
+  if (!tcname) tcname = getenv ("CK_RUN_CASE");
+  if (!sname) sname = getenv ("CK_RUN_SUITE");
 
   if (sr == NULL)
     return;
@@ -526,35 +649,38 @@ void srunner_run_all (SRunner *sr, enum print_output print_mode)
       eprintf ("Bad print_mode argument to srunner_run_all: %d",
 	      __FILE__, __LINE__, print_mode);
     }
-#ifdef _POSIX_VERSION
+#if defined(HAVE_SIGACTION) && defined(HAVE_FORK)
   memset(&new_action, 0, sizeof new_action);
   new_action.sa_handler = sig_handler;
   sigaction(SIGALRM, &new_action, &old_action);
-#endif /* _POSIX_VERSION */
+#endif /* HAVE_SIGACTION && HAVE_FORK*/
   srunner_run_init (sr, print_mode);
-  srunner_iterate_suites (sr, print_mode);
+  srunner_iterate_suites (sr, sname, tcname, print_mode);
   srunner_run_end (sr, print_mode);
-#ifdef _POSIX_VERSION
+#if defined(HAVE_SIGACTION) && defined(HAVE_FORK)
   sigaction(SIGALRM, &old_action, NULL);
-#endif /* _POSIX_VERSION */
+#endif /* HAVE_SIGACTION && HAVE_FORK */
 }
 
 pid_t check_fork (void)
 {
-#ifdef _POSIX_VERSION
+#if defined(HAVE_FORK) && HAVE_FORK==1
   pid_t pid = fork();
   /* Set the process to a process group to be able to kill it easily. */
-  setpgid(pid, group_pid);
+  if(pid >= 0)
+  {
+    setpgid(pid, group_pid);
+  }
   return pid;
-#else /* _POSIX_VERSION */
+#else /* HAVE_FORK */
   eprintf("This version does not support fork", __FILE__, __LINE__);
   return 0;
-#endif /* _POSIX_VERSION */
+#endif /* HAVE_FORK */
 }
 
 void check_waitpid_and_exit (pid_t pid CK_ATTRIBUTE_UNUSED)
 {
-#ifdef _POSIX_VERSION
+#if defined(HAVE_FORK) && HAVE_FORK==1
   pid_t pid_w;
   int status;
 
@@ -567,7 +693,7 @@ void check_waitpid_and_exit (pid_t pid CK_ATTRIBUTE_UNUSED)
     }
   }
   exit(EXIT_SUCCESS);
-#else /* _POSIX_VERSION */
+#else /* HAVE_FORK */
   eprintf("This version does not support fork", __FILE__, __LINE__);
-#endif /* _POSIX_VERSION */
+#endif /* HAVE_FORK */
 }  

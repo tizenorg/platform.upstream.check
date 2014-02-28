@@ -22,13 +22,13 @@ START_TEST(test_init_logging_subunit)
   Suite *s = suite_create("Suite");
   SRunner *sr = srunner_create(s);
   srunner_init_logging(sr, CK_SUBUNIT);
-  list_front (sr->loglst);
-  fail_if (list_at_end(sr->loglst), "No entries in log list");
-  first_log = list_val(sr->loglst);
-  fail_if (first_log == NULL, "log is NULL");
-  list_advance(sr->loglst);
-  fail_unless(list_at_end(sr->loglst), "More than one entry in log list");
-  fail_unless(first_log->lfun == subunit_lfun,
+  check_list_front (sr->loglst);
+  ck_assert_msg (!check_list_at_end(sr->loglst), "No entries in log list");
+  first_log = check_list_val(sr->loglst);
+  ck_assert_msg (first_log != NULL, "log is NULL");
+  check_list_advance(sr->loglst);
+  ck_assert_msg(check_list_at_end(sr->loglst), "More than one entry in log list");
+  ck_assert_msg(first_log->lfun == subunit_lfun,
               "Log function is not the subunit lfun.");
   srunner_end_logging(sr);
   srunner_free(sr);
@@ -38,16 +38,16 @@ END_TEST
 
 Suite *make_log_internal_suite(void)
 {
-
   Suite *s;
-  TCase *tc_core_subunit;
-
-  s = suite_create("Log");
-  tc_core_subunit = tcase_create("Core SubUnit");
 
 #if ENABLE_SUBUNIT
+  TCase *tc_core_subunit;
+  s = suite_create("Log");
+  tc_core_subunit = tcase_create("Core SubUnit");
   suite_add_tcase(s, tc_core_subunit);
   tcase_add_test(tc_core_subunit, test_init_logging_subunit);
+#else
+  s = suite_create("Log");
 #endif
   
   return s;

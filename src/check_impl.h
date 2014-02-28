@@ -21,11 +21,18 @@
 #ifndef CHECK_IMPL_H
 #define CHECK_IMPL_H
 
-
 /* This header should be included by any module that needs
    to know the implementation details of the check structures
-   Include stdio.h & list.h before this header
+   Include stdio.h, time.h, & list.h before this header
 */
+
+#define US_PER_SEC 1000000
+#define NANOS_PER_SECONDS 1000000000
+
+/** calculate the difference in useconds out of two "struct timespec"s */
+#define DIFF_IN_USEC(begin, end) \
+  ( (((end).tv_sec - (begin).tv_sec) * US_PER_SEC) + \
+    ((end).tv_nsec/1000) - ((begin).tv_nsec/1000) )
 
 typedef struct TF {
   TFun fn;
@@ -49,7 +56,7 @@ typedef struct Fixture
 
 struct TCase {
   const char *name;
-  int timeout;
+  struct timespec timeout;
   List *tflst; /* list of test functions */
   List *unch_sflst;
   List *unch_tflst;
@@ -69,6 +76,7 @@ struct TestResult {
   char *file;    /* File where the test occured */
   int line;      /* Line number where the test occurred */
   int iter;      /* The iteration value for looping tests */
+  int duration;  /* duration of this test in microseconds */
   const char *tcname;  /* Test case that generated the result */
   const char *tname;  /* Test that generated the result */
   char *msg;     /* Failure message */
@@ -76,16 +84,17 @@ struct TestResult {
 
 TestResult *tr_create(void);
 void tr_reset(TestResult *tr);
+void tr_free(TestResult *tr);
 
 enum cl_event {
-  CLINITLOG_SR,
-  CLENDLOG_SR,
-  CLSTART_SR,
-  CLSTART_S,
-  CLEND_SR,
-  CLEND_S,
-  CLSTART_T, /* A test case is about to run */
-  CLEND_T
+  CLINITLOG_SR, /* Initialize log file */
+  CLENDLOG_SR,  /* Tests are complete */
+  CLSTART_SR,   /* Suite runner start */
+  CLSTART_S,    /* Suite start */
+  CLEND_SR,     /* Suite runner end */
+  CLEND_S,      /* Suite end */
+  CLSTART_T,    /* A test case is about to run */
+  CLEND_T       /* Test case end */
 };
 
 typedef void (*LFun) (SRunner *, FILE*, enum print_output,
@@ -104,6 +113,7 @@ struct SRunner {
   List *resultlst; /* List of unit test results */
   const char *log_fname; /* name of log file */
   const char *xml_fname; /* name of xml output file */
+  const char *tap_fname; /* name of tap output file */
   List *loglst; /* list of Log objects */
   enum fork_status fstat; /* controls if suites are forked or not
 			     NOTE: Don't use this value directly,
@@ -113,5 +123,7 @@ struct SRunner {
 
 void set_fork_status(enum fork_status fstat);
 enum fork_status cur_fork_status (void);
+
+clockid_t check_get_clockid(void);
 
 #endif /* CHECK_IMPL_H */

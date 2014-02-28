@@ -24,6 +24,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <math.h>
 
 #include "check.h"
 #include "check_error.h"
@@ -59,23 +60,42 @@ Suite *suite_create (const char *name)
   return s;
 }
 
+int suite_tcase (Suite *s, const char *tcname)
+{
+  List *l;
+  TCase *tc;
+
+  if (s == NULL)
+    return 0;
+
+  l = s->tclst;
+  for (check_list_front (l); !check_list_at_end (l); check_list_advance (l)) {
+    tc = check_list_val (l);
+    if (strcmp (tcname, tc->name) == 0)
+      return 1;
+  }
+
+  return 0;
+}
+
 static void suite_free (Suite *s)
 {
   List *l;
   if (s == NULL)
     return;
   l = s->tclst;
-  for (list_front(l); !list_at_end(l); list_advance (l)) {
-    tcase_free (list_val(l));
+  for (check_list_front(l); !check_list_at_end(l); check_list_advance (l)) {
+    tcase_free (check_list_val(l));
   }
-  list_free (s->tclst);
+  check_list_free (s->tclst);
   free(s);
 }
 
 TCase *tcase_create (const char *name)
 {
   char *env;
-  int timeout = DEFAULT_TIMEOUT;
+  double timeout_sec = DEFAULT_TIMEOUT;
+  
   TCase *tc = emalloc (sizeof(TCase)); /*freed in tcase_free */
   if (name == NULL)
     tc->name = "";
@@ -84,21 +104,25 @@ TCase *tcase_create (const char *name)
 
   env = getenv("CK_DEFAULT_TIMEOUT");
   if (env != NULL) {
-    int tmp = atoi(env);
-    if (tmp >= 0) {
-      timeout = tmp;
+    char * endptr = NULL;
+    double tmp = strtod(env, &endptr);
+    if (tmp >= 0 && endptr != env && (*endptr) == '\0') {
+      timeout_sec = tmp;
     }
   }
 
   env = getenv("CK_TIMEOUT_MULTIPLIER");
   if (env != NULL) {
-    int tmp = atoi(env);
-    if (tmp >= 0) {
-      timeout = timeout * tmp;
+    char * endptr = NULL;
+    double tmp = strtod(env, &endptr);
+    if (tmp >= 0 && endptr != env && (*endptr) == '\0') {
+      timeout_sec = timeout_sec * tmp;
     }
   }  
 
-  tc->timeout = timeout;
+  tc->timeout.tv_sec   = (time_t)floor(timeout_sec);
+  tc->timeout.tv_nsec  = (long)((timeout_sec-floor(timeout_sec)) * (double)NANOS_PER_SECONDS);
+  
   tc->tflst = check_list_create();
   tc->unch_sflst = check_list_create();
   tc->ch_sflst = check_list_create();
@@ -111,16 +135,16 @@ TCase *tcase_create (const char *name)
 
 static void tcase_free (TCase *tc)
 {
-  list_apply (tc->tflst, free);
-  list_apply (tc->unch_sflst, free);
-  list_apply (tc->ch_sflst, free);
-  list_apply (tc->unch_tflst, free);
-  list_apply (tc->ch_tflst, free);
-  list_free(tc->tflst);
-  list_free(tc->unch_sflst);
-  list_free(tc->ch_sflst);
-  list_free(tc->unch_tflst);
-  list_free(tc->ch_tflst);
+  check_list_apply (tc->tflst, free);
+  check_list_apply (tc->unch_sflst, free);
+  check_list_apply (tc->ch_sflst, free);
+  check_list_apply (tc->unch_tflst, free);
+  check_list_apply (tc->ch_tflst, free);
+  check_list_free(tc->tflst);
+  check_list_free(tc->unch_sflst);
+  check_list_free(tc->ch_sflst);
+  check_list_free(tc->unch_tflst);
+  check_list_free(tc->ch_tflst);
   
   free(tc);
 }
@@ -129,7 +153,7 @@ void suite_add_tcase (Suite *s, TCase *tc)
 {
   if (s == NULL || tc == NULL)
     return;
-  list_add_end (s->tclst, tc);
+  check_list_add_end (s->tclst, tc);
 }
 
 void _tcase_add_test (TCase *tc, TFun fn, const char *name, int _signal, int allowed_exit_value, int start, int end)
@@ -144,7 +168,7 @@ void _tcase_add_test (TCase *tc, TFun fn, const char *name, int _signal, int all
   tf->signal = _signal; /* 0 means no signal expected */
   tf->allowed_exit_value = allowed_exit_value; /* 0 is default successful exit */
   tf->name = name;
-  list_add_end (tc->tflst, tf);
+  check_list_add_end (tc->tflst, tf);
 }
 
 static Fixture *fixture_create (SFun fun, int ischecked)
@@ -164,7 +188,14 @@ void tcase_add_unchecked_fixture (TCase *tc, SFun setup, SFun teardown)
 
 void tcase_add_checked_fixture (TCase *tc, SFun setup, SFun teardown)
 {
+#if defined(HAVE_FORK)
   tcase_add_fixture (tc,setup,teardown,1);
+#else
+  (void)tc;
+  (void)setup;
+  (void)teardown;
+  eprintf("This version does not support checked fixtures, as fork is not supported", __FILE__, __LINE__);
+#endif
 }
 
 static void tcase_add_fixture (TCase *tc, SFun setup, SFun teardown,
@@ -172,32 +203,41 @@ static void tcase_add_fixture (TCase *tc, SFun setup, SFun teardown,
 {
   if (setup) {
     if (ischecked)
-      list_add_end (tc->ch_sflst, fixture_create(setup, ischecked));
+      check_list_add_end (tc->ch_sflst, fixture_create(setup, ischecked));
     else
-      list_add_end (tc->unch_sflst, fixture_create(setup, ischecked));
+      check_list_add_end (tc->unch_sflst, fixture_create(setup, ischecked));
   }
 
   /* Add teardowns at front so they are run in reverse order. */
   if (teardown) {
     if (ischecked)
-      list_add_front (tc->ch_tflst, fixture_create(teardown, ischecked));
+      check_list_add_front (tc->ch_tflst, fixture_create(teardown, ischecked));
     else
-      list_add_front (tc->unch_tflst, fixture_create(teardown, ischecked));  
+      check_list_add_front (tc->unch_tflst, fixture_create(teardown, ischecked));  
   }
 }
 
-void tcase_set_timeout (TCase *tc, int timeout)
+void tcase_set_timeout (TCase *tc, double timeout)
 {
+#if defined(HAVE_FORK)
   if (timeout >= 0) {
     char *env = getenv("CK_TIMEOUT_MULTIPLIER");
     if (env != NULL) {
-      int tmp = atoi(env);
-      if (tmp >= 0) {
+      char * endptr = NULL;
+      double tmp = strtod(env, &endptr);
+      if (tmp >= 0 && endptr != env && (*endptr) == '\0') {
         timeout = timeout * tmp;
       }
     }
-    tc->timeout = timeout;
+    
+  tc->timeout.tv_sec   = (time_t)floor(timeout);
+  tc->timeout.tv_nsec  = (long)((timeout-floor(timeout)) * (double)NANOS_PER_SECONDS);
   }
+#else
+  (void)tc;
+  (void)timeout;
+  eprintf("This version does not support timeouts, as fork is not supported", __FILE__, __LINE__);
+#endif /* HAVE_FORK */
 }
 
 void tcase_fn_start (const char *fname CK_ATTRIBUTE_UNUSED, const char *file, int line)
@@ -211,28 +251,28 @@ void _mark_point (const char *file, int line)
   send_loc_info (file, line);
 }
 
-void _fail_unless (int result, const char *file,
+void _ck_assert_failed (const char *file,
                    int line, const char *expr, ...)
 {
   const char *msg;
-    
+  va_list ap;
+  char buf[BUFSIZ];
+
   send_loc_info (file, line);
-  if (!result) {
-    va_list ap;
-    char buf[BUFSIZ];
-    
-    va_start(ap,expr);
-    msg = (const char*)va_arg(ap, char *);
-    if (msg == NULL)
-      msg = expr;
-    vsnprintf(buf, BUFSIZ, msg, ap);
-    va_end(ap);
-    send_failure_info (buf);
-    if (cur_fork_status() == CK_FORK) {
-#ifdef _POSIX_VERSION
-      exit(1);
-#endif /* _POSIX_VERSION */
-    }
+
+  va_start(ap,expr);
+  msg = (const char*)va_arg(ap, char *);
+  if (msg == NULL)
+    msg = expr;
+  vsnprintf(buf, BUFSIZ, msg, ap);
+  va_end(ap);
+  send_failure_info (buf);
+  if (cur_fork_status() == CK_FORK) {
+  #if defined(HAVE_FORK) && HAVE_FORK==1
+    exit(1);
+  #endif /* HAVE_FORK */
+  } else {
+    longjmp(error_jmp_buffer, 1);
   }
 }
 
@@ -241,14 +281,25 @@ SRunner *srunner_create (Suite *s)
   SRunner *sr = emalloc (sizeof(SRunner)); /* freed in srunner_free */
   sr->slst = check_list_create();
   if (s != NULL)
-    list_add_end(sr->slst, s);
+    check_list_add_end(sr->slst, s);
   sr->stats = emalloc (sizeof(TestStats)); /* freed in srunner_free */
   sr->stats->n_checked = sr->stats->n_failed = sr->stats->n_errors = 0;
   sr->resultlst = check_list_create();
   sr->log_fname = NULL;
   sr->xml_fname = NULL;
+  sr->tap_fname = NULL;
   sr->loglst = NULL;
+
+#if defined(HAVE_FORK)
   sr->fstat = CK_FORK_GETENV;
+#else
+  /*
+   * Overriding the default of running tests in fork mode,
+   * as this system does not have fork()
+   */
+  sr->fstat = CK_NOFORK;
+#endif /* HAVE_FORK */
+
   return sr;
 }
 
@@ -257,7 +308,7 @@ void srunner_add_suite (SRunner *sr, Suite *s)
   if (s == NULL)
     return;
 
-  list_add_end(sr->slst, s);
+  check_list_add_end(sr->slst, s);
 }
 
 void srunner_free (SRunner *sr)
@@ -269,19 +320,17 @@ void srunner_free (SRunner *sr)
   
   free (sr->stats);
   l = sr->slst;
-  for (list_front(l); !list_at_end(l); list_advance(l)) {
-    suite_free(list_val(l));
+  for (check_list_front(l); !check_list_at_end(l); check_list_advance(l)) {
+    suite_free(check_list_val(l));
   }
-  list_free(sr->slst);
+  check_list_free(sr->slst);
 
   l = sr->resultlst;
-  for (list_front(l); !list_at_end(l); list_advance(l)) {
-    tr = list_val(l);
-    free(tr->file);
-    free(tr->msg);
-    free(tr);
+  for (check_list_front(l); !check_list_at_end(l); check_list_advance(l)) {
+    tr = check_list_val(l);
+    tr_free(tr);
   }
-  list_free (sr->resultlst);
+  check_list_free (sr->resultlst);
 
   free (sr);
 }
@@ -304,8 +353,8 @@ TestResult **srunner_failures (SRunner *sr)
   trarray = malloc (sizeof(trarray[0]) * srunner_ntests_failed (sr));
 
   rlst = sr->resultlst;
-  for (list_front(rlst); !list_at_end(rlst); list_advance(rlst)) {
-    TestResult *tr = list_val(rlst);
+  for (check_list_front(rlst); !check_list_at_end(rlst); check_list_advance(rlst)) {
+    TestResult *tr = check_list_val(rlst);
     if (non_pass(tr->rtype))
       trarray[i++] = tr;
     
@@ -322,8 +371,8 @@ TestResult **srunner_results (SRunner *sr)
   trarray = malloc (sizeof(trarray[0]) * srunner_ntests_run (sr));
 
   rlst = sr->resultlst;
-  for (list_front(rlst); !list_at_end(rlst); list_advance(rlst)) {
-    trarray[i++] = list_val(rlst);
+  for (check_list_front(rlst); !check_list_at_end(rlst); check_list_advance(rlst)) {
+    trarray[i++] = check_list_val(rlst);
   }
   return trarray;
 }
@@ -342,11 +391,6 @@ TestResult *tr_create(void)
   return tr;
 }
 
-void tr_reset(TestResult *tr)
-{
-  tr_init(tr);
-}
-
 static void tr_init (TestResult *tr)
 {
   tr->ctx = CK_CTX_INVALID;
@@ -356,6 +400,14 @@ static void tr_init (TestResult *tr)
   tr->file = NULL;
   tr->tcname = NULL;
   tr->tname = NULL;
+  tr->duration = -1;
+}
+
+void tr_free(TestResult *tr)
+{
+  free(tr->file);
+  free(tr->msg);
+  free(tr);
 }
 
 
@@ -402,4 +454,44 @@ void set_fork_status (enum fork_status fstat)
 enum fork_status cur_fork_status (void)
 {
   return _fstat;
+}
+
+/**
+ * Not all systems support the same clockid_t's. This call checks
+ * if the CLOCK_MONOTONIC clockid_t is valid. If so, that is returned,
+ * otherwise, CLOCK_REALTIME is returned.
+ *
+ * The clockid_t that was found to work on the first call is
+ * cached for subsequent calls.
+ */
+clockid_t check_get_clockid()
+{
+	static clockid_t clockid = -1;
+
+	if(clockid == -1)
+	{
+/*
+ * Only check if we have librt available. Otherwise, the clockid
+ * will be ignored anyway, as the clock_gettime() and
+ * timer_create() functions will be re-implemented in libcompat.
+ * Worse, if librt and alarm() are unavailable, this check
+ * will result in an assert(0).
+ */
+#ifdef HAVE_LIBRT
+		timer_t timerid;
+		if(timer_create(CLOCK_MONOTONIC, NULL, &timerid) == 0)
+		{
+			timer_delete(timerid);
+			clockid = CLOCK_MONOTONIC;
+		}
+		else
+		{
+			clockid = CLOCK_REALTIME;
+		}
+#else
+	clockid = CLOCK_MONOTONIC;
+#endif
+	}
+
+	return clockid;
 }

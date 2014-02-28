@@ -1,7 +1,8 @@
+#include "../lib/libcompat.h"
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <unistd.h>
 
 #include "check.h"
 #include "check_check.h"
@@ -9,28 +10,28 @@
 START_TEST(test_early_exit_normal)
 {
 	exit(0);
-	fail("Should've exitted...");
+	ck_abort_msg("Should've exitted...");
 }
 END_TEST
 
 START_TEST(test_early_exit_with_allowed_error)
 {
 	exit(-1);
-	fail("Should've exitted...");
+	ck_abort_msg("Should've exitted...");
 }
 END_TEST
 
 START_TEST(loop_early_exit_normal)
 {
 	exit(0);
-	fail("Should've exitted...");
+	ck_abort_msg("Should've exitted...");
 }
 END_TEST
 
 START_TEST(loop_early_exit_allowed_exit)
 {
 	exit(-2);
-	fail("Should've exitted...");
+	ck_abort_msg("Should've exitted...");
 }
 END_TEST
 

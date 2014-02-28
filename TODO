@@ -18,6 +18,8 @@ Documentation
 [0.9.4] * Update tutorial so that it works with modern tools.
 [0.9.5] * Clarify looping tests and give example of usage.
 [     ] * Document pkg-config usage, note that old macro usage is not recommended.
+[0.9.9] * Document selective running of tests with CK_RUN_SUITE and CK_RUN_CASE
+          environment variables.
 
 Interface
 =========
@@ -146,6 +148,6 @@ Check Internals
           allow Win32 compatibility.
 [     ] * Incorporate existing Win32 support as mentioned here:
           http://opendarwin.org/pipermail/cvs-libfoundation-all/2005-March/000177.html
-[     ] * Get Cygwin to work, even without forking
-[     ] * Get MinGW to work, even without forking
+[0.9.11] * Get Cygwin to work, with forking
+[0.9.11] * Get MinGW to work, even without forking
 [     ] * Get MSVC to work, even without forking

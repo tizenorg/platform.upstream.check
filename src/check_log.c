@@ -23,7 +23,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <check.h>
-#if HAVE_SUBUNIT_CHILD_H
+#if ENABLE_SUBUNIT
 #include <subunit/child.h>
 #endif
 
@@ -46,12 +46,16 @@ void srunner_set_log (SRunner *sr, const char *fname)
 
 int srunner_has_log (SRunner *sr)
 {
-  return sr->log_fname != NULL;
+  return srunner_log_fname(sr) != NULL;
 }
 
 const char *srunner_log_fname (SRunner *sr)
 {
-  return sr->log_fname;
+  /* check if log filename have been set explicitly */
+  if (sr->log_fname != NULL)
+    return sr->log_fname;
+
+  return getenv("CK_LOG_FILE_NAME");
 }
 
 
@@ -64,12 +68,39 @@ void srunner_set_xml (SRunner *sr, const char *fname)
 
 int srunner_has_xml (SRunner *sr)
 {
-  return sr->xml_fname != NULL;
+  return srunner_xml_fname(sr) != NULL;
 }
 
 const char *srunner_xml_fname (SRunner *sr)
 {
-  return sr->xml_fname;
+  /* check if XML log filename have been set explicitly */
+  if (sr->xml_fname != NULL) {
+    return sr->xml_fname;
+  }
+
+  return getenv("CK_XML_LOG_FILE_NAME");
+}
+
+void srunner_set_tap (SRunner *sr, const char *fname)
+{
+  if (sr->tap_fname)
+    return;
+  sr->tap_fname = fname;
+}
+
+int srunner_has_tap (SRunner *sr)
+{
+  return srunner_tap_fname(sr) != NULL;
+}
+
+const char *srunner_tap_fname (SRunner *sr)
+{
+  /* check if tap log filename have been set explicitly */
+  if (sr->tap_fname != NULL) {
+    return sr->tap_fname;
+  }
+
+  return getenv("CK_TAP_LOG_FILE_NAME");
 }
 
 void srunner_register_lfun (SRunner *sr, FILE *lfile, int close,
@@ -85,7 +116,7 @@ void srunner_register_lfun (SRunner *sr, FILE *lfile, int close,
   l->lfun = lfun;
   l->close = close;
   l->mode = printmode;
-  list_add_end (sr->loglst, l);
+  check_list_add_end (sr->loglst, l);
   return;
 }
 
@@ -126,8 +157,8 @@ static void srunner_send_evt (SRunner *sr, void *obj, enum cl_event evt)
   List *l;
   Log *lg;
   l = sr->loglst;
-  for (list_front(l); !list_at_end(l); list_advance(l)) {
-    lg = list_val(l);
+  for (check_list_front(l); !check_list_at_end(l); check_list_advance(l)) {
+    lg = check_list_val(l);
     fflush(lg->lfile);
     lg->lfun (sr, lg->lfile, lg->mode, obj, evt);
     fflush(lg->lfile);
@@ -138,10 +169,6 @@ void stdout_lfun (SRunner *sr, FILE *file, enum print_output printmode,
 		  void *obj, enum cl_event evt)
 {
   Suite *s;
-  
-  if (printmode == CK_ENV) {
-    printmode = get_env_printmode();
-  }
 
   switch (evt) {
   case CLINITLOG_SR:
@@ -169,7 +196,6 @@ void stdout_lfun (SRunner *sr, FILE *file, enum print_output printmode,
     }
     break;
   case CLEND_S:
-    s = obj;
     break;
   case CLSTART_T:
     break;
@@ -204,7 +230,6 @@ void lfile_lfun (SRunner *sr, FILE *file, enum print_output printmode CK_ATTRIBU
     srunner_fprint (file, sr, CK_MINIMAL);
     break;
   case CLEND_S:
-    s = obj;
     break;
   case CLSTART_T:
     break;
@@ -224,42 +249,54 @@ void xml_lfun (SRunner *sr CK_ATTRIBUTE_UNUSED, FILE *file, enum print_output pr
 {
   TestResult *tr;
   Suite *s;
-  static struct timeval inittv, endtv;
+  static struct timespec ts_start = {0,0};
   static char t[sizeof "yyyy-mm-dd hh:mm:ss"] = {0};
 
   if (t[0] == 0)
   {
+    struct timeval inittv;
     struct tm now;
     gettimeofday(&inittv, NULL);
-    localtime_r(&(inittv.tv_sec), &now);
-    strftime(t, sizeof("yyyy-mm-dd hh:mm:ss"), "%Y-%m-%d %H:%M:%S", &now);
+    clock_gettime(check_get_clockid(), &ts_start);
+    if(localtime_r((const time_t*)&(inittv.tv_sec), &now) != NULL)
+    {
+        strftime(t, sizeof("yyyy-mm-dd hh:mm:ss"), "%Y-%m-%d %H:%M:%S", &now);
+    }
   }
 
   switch (evt) {
   case CLINITLOG_SR:
     fprintf(file, "<?xml version=\"1.0\"?>\n");
+    fprintf(file, "<?xml-stylesheet type=\"text/xsl\" href=\"http://check.sourceforge.net/xml/check_unittest.xslt\"?>\n");
     fprintf(file, "<testsuites xmlns=\"http://check.sourceforge.net/ns\">\n");
     fprintf(file, "  <datetime>%s</datetime>\n", t);
     break;
   case CLENDLOG_SR:
-    gettimeofday(&endtv, NULL);
-    fprintf(file, "  <duration>%f</duration>\n",
-        (endtv.tv_sec + (float)(endtv.tv_usec)/1000000) - \
-        (inittv.tv_sec + (float)(inittv.tv_usec/1000000)));
-    fprintf(file, "</testsuites>\n");
+    {
+      struct timespec ts_end = {0,0};
+      unsigned int duration;
+
+      /* calculate time the test were running */
+      clock_gettime(check_get_clockid(), &ts_end);
+      duration = DIFF_IN_USEC(ts_start, ts_end);
+      fprintf(file, "  <duration>%u.%06u</duration>\n",
+          duration / US_PER_SEC, duration % US_PER_SEC);
+      fprintf(file, "</testsuites>\n");
+    }
     break;
   case CLSTART_SR:
     break;
   case CLSTART_S:
     s = obj;
     fprintf(file, "  <suite>\n");
-    fprintf(file, "    <title>%s</title>\n", s->name);
+    fprintf(file, "    <title>");
+    fprint_xml_esc(file, s->name);
+    fprintf(file,"</title>\n");
     break;
   case CLEND_SR:
     break;
   case CLEND_S:
     fprintf(file, "  </suite>\n");
-    s = obj;
     break;
   case CLSTART_T:
     break;
@@ -273,12 +310,51 @@ void xml_lfun (SRunner *sr CK_ATTRIBUTE_UNUSED, FILE *file, enum print_output pr
 
 }
 
+void tap_lfun (SRunner *sr, FILE *file, enum print_output printmode CK_ATTRIBUTE_UNUSED,
+		 void *obj, enum cl_event evt)
+{
+  TestResult *tr;
+  Suite *s;
+
+  static int num_tests_run = 0;
+
+  switch (evt) {
+  case CLINITLOG_SR:
+    /* As this is a new log file, reset the number of tests executed */
+    num_tests_run = 0;
+    break;
+  case CLENDLOG_SR:
+    /* Output the test plan as the last line */
+    fprintf(file, "1..%d\n", num_tests_run);
+    fflush(file);
+    break;
+  case CLSTART_SR:
+    break;
+  case CLSTART_S:
+    break;
+  case CLEND_SR:
+    break;
+  case CLEND_S:
+    break;
+  case CLSTART_T:
+    break;
+  case CLEND_T:
+    /* Print the test result to the tap file */
+    num_tests_run+=1;
+    tr = obj;
+    fprintf(file, "%s %d - %s:%s:%s: %s\n", tr->rtype == CK_PASS ? "ok" : "not ok", num_tests_run, tr->file, tr->tcname, tr->tname, tr->msg);
+    fflush(file);
+    break;
+  default:
+    eprintf("Bad event type received in tap_lfun", __FILE__, __LINE__);
+  }
+}
+
 #if ENABLE_SUBUNIT
 void subunit_lfun (SRunner *sr, FILE *file, enum print_output printmode,
 		  void *obj, enum cl_event evt)
 {
   TestResult *tr;
-  Suite *s;
   char const * name;
   
   /* assert(printmode == CK_SUBUNIT); */
@@ -291,7 +367,6 @@ void subunit_lfun (SRunner *sr, FILE *file, enum print_output printmode,
   case CLSTART_SR:
     break;
   case CLSTART_S:
-    s = obj;
     break;
   case CLEND_SR:
     if (printmode > CK_SILENT) {
@@ -300,7 +375,6 @@ void subunit_lfun (SRunner *sr, FILE *file, enum print_output printmode,
     }
     break;
   case CLEND_S:
-    s = obj;
     break;
   case CLSTART_T:
     name = obj;
@@ -312,17 +386,17 @@ void subunit_lfun (SRunner *sr, FILE *file, enum print_output printmode,
       char *name = ck_strdup_printf ("%s:%s", tr->tcname, tr->tname);
       char *msg = tr_short_str (tr);
       switch (tr->rtype) {
-	case CK_PASS:
-	  subunit_test_pass(name);
-	  break;
-	case CK_FAILURE:
-	  subunit_test_fail(name, msg);
-	  break;
-	case CK_ERROR:
-	  subunit_test_error(name, msg);
-	  break;
-	default:
-	  eprintf("Bad result type in subunit_lfun", __FILE__, __LINE__);
+      case CK_PASS:
+        subunit_test_pass(name);
+        break;
+      case CK_FAILURE:
+        subunit_test_fail(name, msg);
+        break;
+      case CK_ERROR:
+        subunit_test_error(name, msg);
+        break;
+      default:
+        eprintf("Bad result type in subunit_lfun", __FILE__, __LINE__);
         free(name);
         free(msg);
       }
@@ -338,7 +412,7 @@ FILE *srunner_open_lfile (SRunner *sr)
 {
   FILE *f = NULL;
   if (srunner_has_log (sr)) {
-    f = fopen(sr->log_fname, "w");
+    f = fopen(srunner_log_fname(sr), "w");
     if (f == NULL)
       eprintf ("Error in call to fopen while opening log file %s:", __FILE__, __LINE__ - 2,
 	       sr->log_fname);
@@ -350,10 +424,22 @@ FILE *srunner_open_xmlfile (SRunner *sr)
 {
   FILE *f = NULL;
   if (srunner_has_xml (sr)) {
-    f = fopen(sr->xml_fname, "w");
+    f = fopen(srunner_xml_fname(sr), "w");
     if (f == NULL)
       eprintf ("Error in call to fopen while opening xml file %s:", __FILE__, __LINE__ - 2,
 	       sr->xml_fname);
+  }
+  return f;
+}
+
+FILE *srunner_open_tapfile (SRunner *sr)
+{
+  FILE *f = NULL;
+  if (srunner_has_tap (sr)) {
+    f = fopen(srunner_tap_fname(sr), "w");
+    if (f == NULL)
+      eprintf ("Error in call to fopen while opening tap file %s:", __FILE__, __LINE__ - 2,
+	       sr->tap_fname);
   }
   return f;
 }
@@ -378,6 +464,10 @@ void srunner_init_logging (SRunner *sr, enum print_output print_mode)
   if (f) {
     srunner_register_lfun (sr, f, 2, xml_lfun, print_mode);
   }
+  f = srunner_open_tapfile (sr);
+  if (f) {
+    srunner_register_lfun (sr, f, 2, tap_lfun, print_mode);
+  }
   srunner_send_evt (sr, NULL, CLINITLOG_SR);
 }
 
@@ -389,8 +479,8 @@ void srunner_end_logging (SRunner *sr)
   srunner_send_evt (sr, NULL, CLENDLOG_SR);
 
   l = sr->loglst;
-  for (list_front(l); !list_at_end(l); list_advance(l)) {
-    Log *lg = list_val(l);
+  for (check_list_front(l); !check_list_at_end(l); check_list_advance(l)) {
+    Log *lg = check_list_val(l);
     if (lg->close) {
       rval = fclose (lg->lfile);
       if (rval != 0)
@@ -398,6 +488,6 @@ void srunner_end_logging (SRunner *sr)
     }
     free (lg);
   }
-  list_free(l);
+  check_list_free(l);
   sr->loglst = NULL;
 }

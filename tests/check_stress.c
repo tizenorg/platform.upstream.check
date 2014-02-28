@@ -14,13 +14,13 @@ SRunner *sr;
 
 START_TEST(test_pass)
 {
-  fail_unless(1,"Shouldn't see this message");
+  ck_assert_msg(1,"Shouldn't see this message");
 }
 END_TEST
 
 START_TEST(test_fail)
 {
-  fail("This test fails");
+  ck_abort_msg("This test fails");
 }
 END_TEST
 

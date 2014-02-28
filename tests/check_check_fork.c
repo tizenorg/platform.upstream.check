@@ -23,14 +23,14 @@ END_TEST
 
 START_TEST(test_nofork_sideeffects)
 {
-  fail_unless(counter == 1,
+  ck_assert_msg(counter == 1,
 	      "Side effects not seen across tests");
 }
 END_TEST
 
 START_TEST(test_nofork_pid)
 {
-  fail_unless(mypid == getpid(),
+  ck_assert_msg(mypid == getpid(),
 	      "Unit test is in a different adresss space from setup code");
 }
 END_TEST
@@ -71,15 +71,34 @@ void fork_teardown (void)
 
 START_TEST(test_default_fork)
 {
-  fail_unless(srunner_fork_status(fork_dummy_sr) == CK_FORK,
+#if defined(HAVE_FORK) && HAVE_FORK == 1
+  ck_assert_msg(srunner_fork_status(fork_dummy_sr) == CK_FORK,
 	      "Default fork status not set correctly");
+#else
+  ck_assert_msg(srunner_fork_status(fork_dummy_sr) == CK_NOFORK,
+	      "Default fork status not set correctly");
+#endif /* HAVE_FORK */
 }
 END_TEST
 
-START_TEST(test_set_fork)
+START_TEST(test_set_nofork)
 {
   srunner_set_fork_status(fork_dummy_sr, CK_NOFORK);
-  fail_unless(srunner_fork_status(fork_dummy_sr) == CK_NOFORK,
+  ck_assert_msg(srunner_fork_status(fork_dummy_sr) == CK_NOFORK,
+	      "Fork status not changed correctly");
+}
+END_TEST
+
+/*
+ * The following tests will fail if fork is unavailable, as
+ * attempting to set the fork mode as anything but
+ * CK_NOFORK is considered an error.
+ */
+#if defined(HAVE_FORK) && HAVE_FORK==1
+START_TEST(test_set_fork)
+{
+  srunner_set_fork_status(fork_dummy_sr, CK_FORK);
+  ck_assert_msg(srunner_fork_status(fork_dummy_sr) == CK_FORK,
 	      "Fork status not changed correctly");
 }
 END_TEST
@@ -87,7 +106,7 @@ END_TEST
 START_TEST(test_env)
 {
   putenv((char *) "CK_FORK=no");
-  fail_unless(srunner_fork_status(fork_dummy_sr) == CK_NOFORK,
+  ck_assert_msg(srunner_fork_status(fork_dummy_sr) == CK_NOFORK,
 	      "Fork status does not obey environment variable");
 }
 END_TEST
@@ -96,15 +115,15 @@ START_TEST(test_env_and_set)
 {
   putenv((char *) "CK_FORK=no");
   srunner_set_fork_status(fork_dummy_sr, CK_FORK);  
-  fail_unless(srunner_fork_status(fork_dummy_sr) == CK_FORK,
+  ck_assert_msg(srunner_fork_status(fork_dummy_sr) == CK_FORK,
 	      "Explicit setting of fork status should override env");
 }
 END_TEST
-
+#endif /* HAVE_FORK */
 
 START_TEST(test_nofork)
 {
-  fail_unless(srunner_ntests_failed(fork_sr) == 0,
+  ck_assert_msg(srunner_ntests_failed(fork_sr) == 0,
 	      "Errors on nofork test");
 }
 END_TEST
@@ -119,9 +138,12 @@ Suite *make_fork_suite(void)
 
   suite_add_tcase(s, tc);
   tcase_add_test(tc,test_default_fork);
+  tcase_add_test(tc,test_set_nofork);
+#if defined(HAVE_FORK) && HAVE_FORK==1
   tcase_add_test(tc,test_set_fork);
   tcase_add_test(tc,test_env);
   tcase_add_test(tc,test_env_and_set);
+#endif /* HAVE_FORK */
   tcase_add_test(tc,test_nofork);
   
   return s;

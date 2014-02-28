@@ -1,10 +1,10 @@
-This is check.info, produced by makeinfo version 4.11 from check.texi.
+This is check.info, produced by makeinfo version 4.13 from check.texi.
 
-This manual is for Check (version 0.9.8, 23 September 2009), a unit
+This manual is for Check (version 0.9.12, 20 January 2014), a unit
 testing framework for C.
 
-   Copyright (C) 2001-2009 Arien Malec, Chris Pickett, Fredrik
-Hugosson, and Robert Lemmen.
+   Copyright (C) 2001-2011 Arien Malec, Branden Archer, Chris Pickett,
+Fredrik Hugosson, and Robert Lemmen.
 
      Permission is granted to copy, distribute and/or modify this
      document under the terms of the GNU Free Documentation License,
@@ -24,11 +24,11 @@ File: check.info,  Node: Top,  Next: Introduction,  Prev: (dir),  Up: (dir)
 Check
 *****
 
-This manual is for Check (version 0.9.8, 23 September 2009), a unit
+This manual is for Check (version 0.9.12, 20 January 2014), a unit
 testing framework for C.
 
-   Copyright (C) 2001-2009 Arien Malec, Chris Pickett, Fredrik
-Hugosson, and Robert Lemmen.
+   Copyright (C) 2001-2011 Arien Malec, Branden Archer, Chris Pickett,
+Fredrik Hugosson, and Robert Lemmen.
 
      Permission is granted to copy, distribute and/or modify this
      document under the terms of the GNU Free Documentation License,
@@ -69,10 +69,12 @@ Tutorial: Basic Unit Testing
 
 Advanced Features
 
+* Convenience Test Functions::
 * Running Multiple Cases::
 * No Fork Mode::
 * Test Fixtures::
 * Multiple Suites in one SRunner::
+* Selective Running of Tests::
 * Testing Signal Handling and Exit Values::
 * Looping Tests::
 * Test Timeouts::
@@ -88,6 +90,7 @@ Test Fixtures
 Test Logging
 
 * XML Logging::
+* TAP Logging::
 
 Copying This Manual
 
@@ -169,12 +172,13 @@ framework will happily note a unit test error, and chug along.
    The Check framework is also designed to play happily with common
 development environments for C programming.  The author designed Check
 around Autoconf/Automake (thus the name Check: `make check' is the
-idiom used for testing with Autoconf/Automake), and the test failure
-messages thrown up by Check use the common idiom of
-`filename:linenumber:message' used by `gcc' and family to report
-problems in source code.  With (X)Emacs, the output of Check allows one
-to quickly navigate to the location of the unit test that failed;
-presumably that also works in VI and IDEs.
+idiom used for testing with Autoconf/Automake). Note however that
+Autoconf/Automake are NOT necessary to use Check; any build system is
+sufficent. The test failure messages thrown up by Check use the common
+idiom of `filename:linenumber:message' used by `gcc' and family to
+report problems in source code.  With (X)Emacs, the output of Check
+allows one to quickly navigate to the location of the unit test that
+failed; presumably that also works in VI and IDEs.
 
 * Menu:
 
@@ -209,7 +213,7 @@ GNU Autounit
      GLib extensively, which means that linking and such need special
      options, but this may not be a big problem to you, especially if
      you are already using GTK or GLib.  See the GNU Autounit homepage
-     (http://www.recursism.com/s2004/zp/products/gnu+autounit).
+     (http://autounit.tigris.org/).
 
 cUnit
      Also uses GLib, but does not fork to protect the address space of
@@ -221,6 +225,11 @@ CUnit
      currently fork or otherwise protect the address space of unit
      tests.  In early development.  See the CUnit homepage
      (http://cunit.sourceforge.net).
+
+CuTest
+     A simple framework with just one .c and one .h file that you drop
+     into your source tree.  See the CuTest homepage
+     (http://cutest.sourceforge.net).
 
 CppUnit
      The premier unit testing framework for C++; you can also use it to
@@ -292,11 +301,9 @@ File: check.info,  Node: How to Write a Test,  Next: Setting Up the Money Build,
 
 Test writing using Check is very simple. The file in which the checks
 are defined must include `check.h' as so:
-
      #include <check.h>
 
    The basic unit test looks as follows:
-
      START_TEST (test_name)
      {
        /* unit test code */
@@ -319,10 +326,11 @@ an interface in `money.h', an implementation in `money.c', and a place
 to store our unit tests, `check_money.c'.  We want to integrate these
 core files into our build system, and will need some additional
 structure. To manage everything we'll use Autoconf, Automake, and
-friends (collectively known as Autotools) for this example.  One could
-do something similar with ordinary Makefiles, but in the authors'
-opinion, it is generally easier to use Autotools than bare Makefiles,
-and they provide built-in support for running tests.
+friends (collectively known as Autotools) for this example.  Note that
+one could do something similar with ordinary Makefiles, or any other
+builc system. It is in the authors' opinion that it is generally easier
+to use Autotools than bare Makefiles, and they provide built-in support
+for running tests.
 
    Note that this is not the place to explain how Autotools works.  If
 you need help understanding what's going on beyond the explanations
@@ -340,7 +348,6 @@ create backups of `money.h', `money.c', and `check_money.c', and then
 delete the originals.
 
    We set up a directory structure as follows:
-
      .
      |-- Makefile.am
      |-- README
@@ -356,8 +363,7 @@ delete the originals.
 
    Note that this is the output of `tree', a great directory
 visualization tool.  The top-level `Makefile.am' is simple; it merely
-tells Automake how to process subdirectories:
-
+tells Automake how to process sub-directories:
      SUBDIRS = src . tests
 
    Note that `tests' comes last, because the code should be testing an
@@ -367,7 +373,7 @@ boilerplate, as specified by the Autotools tutorial and as suggested by
 *note AM_PATH_CHECK::.
 
    `src/Makefile.am' builds `libmoney' as a Libtool archive, and links
-it to an application simply called `main'.  The application's behaviour
+it to an application simply called `main'.  The application's behavior
 is not important to this tutorial; what's important is that none of the
 functions we want to unit test appear in `main.c'; this probably means
 that the only function in `main.c' should be `main()' itself.  In order
@@ -417,7 +423,6 @@ contain an empty `main()' function:
 
    Create the GNU Build System for the project and then build `main'
 and `libmoney.la' as follows:
-
      $ autoreconf --install
      $ ./configure
      $ make
@@ -432,9 +437,9 @@ goes well, `make' should report that our tests passed.  No surprise,
 because there aren't any tests to fail.  If you have problems, make
 sure to see *note AM_PATH_CHECK::.
 
-   This was tested on the i386 "testing" distribution of Debian
-GNU/Linux (etch) in March 2006, using Autoconf 2.59, Automake 1.9.6,
-and Libtool 1.5.22.  Please report any problems to <check-devel AT
+   This was tested on the isadora distribution of Linux Mint GNU/Linux
+in November 2012, using Autoconf 2.65, Automake 1.11.1, and Libtool
+2.2.6b.  Please report any problems to <check-devel AT
 lists.sourceforge.net>.
 
 
@@ -455,9 +460,9 @@ Patterns approach to software development and OO design).
 
    Here are the changes to `check_money.c' for our first unit test:
 
-     --- tests/check_money.1.c	2009-09-23 20:44:00.000000000 +1000
-     +++ tests/check_money.2.c	2009-09-23 20:44:00.000000000 +1000
-     @@ -1,3 +1,18 @@
+     --- tests/check_money.1.c	2014-01-20 19:20:40.593731998 -0500
+     +++ tests/check_money.2.c	2014-01-20 19:20:40.593731998 -0500
+     @@ -1,5 +1,18 @@
      +#include <check.h>
      +#include "../src/money.h"
      +
@@ -465,10 +470,8 @@ Patterns approach to software development and OO design).
      +{
      +  Money *m;
      +  m = money_create (5, "USD");
-     +  fail_unless (money_amount (m) == 5,
-     +	       "Amount not set correctly on creation");
-     +  fail_unless (strcmp (money_currency (m), "USD") == 0,
-     +	       "Currency not set correctly on creation");
+     +  ck_assert_int_eq (money_amount (m), 5);
+     +  ck_assert_str_eq (money_currency (m), "USD");
      +  money_free (m);
      +}
      +END_TEST
@@ -476,50 +479,56 @@ Patterns approach to software development and OO design).
       int
       main (void)
       {
+        return 0;
+      }
 
    A unit test should just chug along and complete.  If it exits early,
 or is signaled, it will fail with a generic error message.  (Note: it
 is conceivable that you expect an early exit, or a signal and there is
 functionality in Check to specifically assert that we should expect a
 signal or an early exit.)  If we want to get some information about
-what failed, we need to use the `fail_unless()' function.  The function
-(actually a macro) takes a first Boolean argument, and an error message
-to send if the condition is not true.
+what failed, we need to use some calls that will point out a failure.
+Two such calls are `ck_assert_int_eq' (used to determine if two integers
+are equal) and `ck_assert_str_eq' (used to determine if two null
+terminated strings are equal). Both of these functions (actually
+macros) will signal an error if their arguments are not equal.
+
+   An alternative to using `ck_assert_int_eq' and `ck_assert_str_eq' is
+to write the expression under test directly using `ck_assert'.  This
+takes one Boolean argument which must be True for the check to pass.
+The second test could be rewritten as follows:
+     ck_assert(strcmp (money_currency (m), "USD") == 0);
+
+   `ck_assert' will find and report failures, but will not print any
+user supplied message in the unit test result. To print a user defined
+message along with any failures found, use `ck_assert_msg'. The first
+argument is a Boolean argument. The remaining arguments support
+`varargs' and accept `printf'-style format strings and arguments.  This
+is especially useful while debugging. For example, the second test
+could be rewritten as:
+     ck_assert_msg(strcmp (money_currency (m), "USD") == 0,
+              "Was expecting a currency of USD, but found %s", money_currency (m));
 
    If the Boolean argument is too complicated to elegantly express
-within `fail_unless()', there is an alternate function `fail()' that
-unconditionally fails.  The second test inside `test_money_create'
-above could be rewritten as follows:
-
+within `ck_assert()', there are the alternate functions `ck_abort()'
+and `ck_abort_msg()' that unconditionally fail.  The second test inside
+`test_money_create' above could be rewritten as follows:
      if (strcmp (money_currency (m), "USD") != 0)
        {
-         fail ("Currency not set correctly on creation");
+         ck_abort_msg ("Currency not set correctly on creation");
        }
 
-   There is also a `fail_if()' function, which is the inverse of
-`fail_unless()'.  Using it, the above test then looks like this:
-
-     fail_if (strcmp (money_currency (m), "USD") != 0,
-              "Currency not set correctly on creation");
-
-   For your convenience all fail functions also accepts NULL as the msg
-argument and substitutes a suitable message for you.  So you could also
-write a test as follows:
-
-     fail_unless (money_amount (m) == 5, NULL);
+   For your convenience ck_assert, which does not accept a user
+supplied message, substitutes a suitable message for you. (This is also
+equivalent to passing a NULL message to ck_assert_msg). So you could
+also write a test as follows:
+     ck_assert (money_amount (m) == 5);
 
    This is equivalent to:
+     ck_assert_msg (money_amount (m) == 5, NULL);
 
-     fail_unless (money_amount (m) == 5,
-                  "Assertion 'money_amount (m) == 5' failed");
-
-   All fail functions also support `varargs' and accept `printf'-style
-format strings and arguments.  This is especially useful while
-debugging.  With `printf'-style formatting the message could look like
-this:
-
-     fail_unless(money_amount (m) == 5,
-                 "Amount was %d, instead of 5", money_amount (m));
+   which will print the file, line number, and the message `"Assertion
+'money_amount (m) == 5' failed"' if `money_amount (m) != 5'.
 
    When we try to compile and run the test suite now using `make
 check', we get a whole host of compilation errors.  It may seem a bit
@@ -533,8 +542,8 @@ progress, guided by the unit tests, so that's what we will now do.
 
    We will patch our header `money.h' as follows:
 
-     --- src/money.1.h	2009-09-23 20:44:00.000000000 +1000
-     +++ src/money.2.h	2009-09-23 20:44:00.000000000 +1000
+     --- src/money.1.h	2014-01-20 19:20:40.701732002 -0500
+     +++ src/money.2.h	2014-01-20 19:20:40.701732002 -0500
      @@ -1,4 +1,11 @@
       #ifndef MONEY_H
       #define MONEY_H
@@ -565,14 +574,20 @@ overhead, but it is mostly one-off.  Here's a diff for the new version
 of `check_money.c'.  Note that we include stdlib.h to get the
 definitions of `EXIT_SUCCESS' and `EXIT_FAILURE'.
 
-     --- tests/check_money.2.c	2009-09-23 20:44:00.000000000 +1000
-     +++ tests/check_money.3.c	2009-09-23 20:44:00.000000000 +1000
-     @@ -1,3 +1,4 @@
+     --- tests/check_money.2.c	2014-01-20 19:20:40.593731998 -0500
+     +++ tests/check_money.3.c	2014-01-20 19:20:40.597732000 -0500
+     @@ -1,18 +1,38 @@
      +#include <stdlib.h>
       #include <check.h>
       #include "../src/money.h"
 
-     @@ -13,8 +14,27 @@
+      START_TEST (test_money_create)
+      {
+        Money *m;
+        m = money_create (5, "USD");
+        ck_assert_int_eq (money_amount (m), 5);
+        ck_assert_str_eq (money_currency (m), "USD");
+        money_free (m);
       }
       END_TEST
 
@@ -635,10 +650,10 @@ encounter linker errors again we try out `make check'.  Try it for
 yourself and see.  The reason is that the `money.c' implementation of
 the `money.h' interface hasn't been created yet.  Let's go with the
 fastest solution possible and implement stubs for each of the functions
-in `money.c':
+in `money.c'. Here is the diff:
 
-     --- src/money.1.c	2009-09-23 20:44:00.000000000 +1000
-     +++ src/money.3.c	2009-09-23 20:44:00.000000000 +1000
+     --- src/money.1.c	2014-01-20 19:20:40.701732002 -0500
+     +++ src/money.3.c	2014-01-20 19:20:40.701732002 -0500
      @@ -0,0 +1,26 @@
      +#include <stdlib.h>
      +#include "money.h"
@@ -678,21 +693,33 @@ File: check.info,  Node: SRunner Output,  Prev: Creating a Suite,  Up: Tutorial
 3.5 SRunner Output
 ==================
 
-The function to run tests in an `SRunner' is defined as follows:
-
+The functions to run tests in an `SRunner' are defined as follows:
      void srunner_run_all (SRunner * sr, enum print_output print_mode);
 
-   This function does two things:
+     void srunner_run (SRunner *sr, const char *sname, const char *tcname,
+                       enum print_output print_mode);
 
-  1. It runs all of the unit tests for all of the test cases defined
-     for all of the suites in the SRunner, and collects the results in
-     the SRunner
+   Those functions do two things:
 
-  2. It prints the results according to the `print_mode' specified.
+  1. They run all of the unit tests for the selected test cases defined
+     for the selected suites in the SRunner, and collect the results in
+     the SRunner.  The determination of the selected test cases and
+     suites depends on the specific function used.
+
+     `srunner_run_all' will run all the defined test cases of all
+     defined suites except if the environment variables `CK_RUN_CASE'
+     or `CK_RUN_SUITE' are defined.  If defined, those variables shall
+     contain the name of a test suite or a test case, defining in that
+     way the selected suite/test case.
+
+     `srunner_run' will run the suite/case selected by the `sname' and
+     `tcname' parameters.  A value of `NULL' in some of those
+     parameters means "any suite/case".
+
+  2. They print the results according to the `print_mode' specified.
 
    For SRunners that have already been run, there is also a separate
 printing function defined as follows:
-
      void srunner_print (SRunner *sr, enum print_output print_mode);
 
    The enumeration values of `print_output' defined in Check that
@@ -728,16 +755,15 @@ parameter `print_mode' can assume are as follows:
 
    With the `CK_NORMAL' flag specified in our `main()', let's rerun
 make check now. As before, we get the following satisfying output:
-
      Running suite(s): Money
      0%: Checks: 1, Failures: 1, Errors: 0
-     check_money.c:10:F:Core:test_money_create: Amount not set correctly on
-     creation
+     check_money.c:9:F:Core:test_money_create:0: Assertion 'money_amount (m)==5' failed:
+     money_amount (m)==0, 5==5
      FAIL: check_money
-     ==================================================
-     1 of 1 tests failed
-     Please report to check-devel@lists.sourceforge.net
-     ==================================================
+     =====================================================
+     1 of 1 test failed
+     Please report to check-devel AT lists.sourceforge.net
+     =====================================================
 
    The first number in the summary line tells us that 0% of our tests
 passed, and the rest of the line tells us that there was one check in
@@ -753,9 +779,9 @@ the `check_money' program failed, and the bug-report address given in
 its tests.  We first have to create a Money structure to hold the
 amount, and then implement the function to return the correct amount:
 
-     --- src/money.3.c	2009-09-23 20:44:00.000000000 +1000
-     +++ src/money.4.c	2009-09-23 20:44:00.000000000 +1000
-     @@ -1,6 +1,11 @@
+     --- src/money.3.c	2014-01-20 19:20:40.701732002 -0500
+     +++ src/money.4.c	2014-01-20 19:20:40.701732002 -0500
+     @@ -1,26 +1,31 @@
       #include <stdlib.h>
       #include "money.h"
 
@@ -767,7 +793,9 @@ amount, and then implement the function to return the correct amount:
       Money *
       money_create (int amount, char *currency)
       {
-     @@ -10,7 +15,7 @@
+        return NULL;
+      }
+
       int
       money_amount (Money * m)
       {
@@ -776,14 +804,23 @@ amount, and then implement the function to return the correct amount:
       }
 
       char *
+      money_currency (Money * m)
+      {
+        return NULL;
+      }
+
+      void
+      money_free (Money * m)
+      {
+        return;
+      }
 
    We will now rerun make check and... what's this?  The output is now
 as follows:
-
      Running suite(s): Money
      0%: Checks: 1, Failures: 0, Errors: 1
-     check_money.c:5:E:Core:test_money_create: (after this point) Received
-     signal 11 (Segmentation fault)
+     check_money.c:5:E:Core:test_money_create:0: (after this point)
+     Received signal 11 (Segmentation fault)
 
    What does this mean?  Note that we now have an error, rather than a
 failure.  This means that our unit test either exited early, or was
@@ -791,9 +828,9 @@ signaled.  Next note that the failure message says "after this point";
 This means that somewhere after the point noted (`check_money.c', line
 5) there was a problem: signal 11 (a.k.a.  segmentation fault).  The
 last point reached is set on entry to the unit test, and after every
-call to `fail_unless()', `fail()', or the special function
-`mark_point()'.  For example, if we wrote some test code as follows:
-
+call to the `ck_assert()', `ck_abort()', `ck_assert_int_*()',
+`ck_assert_str_*()', or the special function `mark_point()'.  For
+example, if we wrote some test code as follows:
      stuff_that_works ();
      mark_point ();
      stuff_that_dies ();
@@ -803,11 +840,14 @@ call to `fail_unless()', `fail()', or the special function
    The reason our test failed so horribly is that we haven't implemented
 `money_create()' to create any `Money'.  We'll go ahead and implement
 that, the symmetric `money_free()', and `money_currency()' too, in
-order to make our unit test pass again:
+order to make our unit test pass again, here is a diff:
 
-     --- src/money.4.c	2009-09-23 20:44:00.000000000 +1000
-     +++ src/money.5.c	2009-09-23 20:44:00.000000000 +1000
-     @@ -4,12 +4,21 @@
+     --- src/money.4.c	2014-01-20 19:20:40.701732002 -0500
+     +++ src/money.5.c	2014-01-20 19:20:40.701732002 -0500
+     @@ -1,31 +1,41 @@
+      #include <stdlib.h>
+      #include "money.h"
+
       struct Money
       {
         int amount;
@@ -830,7 +870,11 @@ order to make our unit test pass again:
       }
 
       int
-     @@ -21,11 +30,12 @@
+      money_amount (Money * m)
+      {
+        return m->amount;
+      }
+
       char *
       money_currency (Money * m)
       {
@@ -853,14 +897,16 @@ File: check.info,  Node: Advanced Features,  Next: Conclusion and References,  P
 
 What you've seen so far is all you need for basic unit testing.  The
 features described in this section are additions to Check that make it
-easier for the developer to write, run, and analyse tests.
+easier for the developer to write, run, and analyze tests.
 
 * Menu:
 
+* Convenience Test Functions::
 * Running Multiple Cases::
 * No Fork Mode::
 * Test Fixtures::
 * Multiple Suites in one SRunner::
+* Selective Running of Tests::
 * Testing Signal Handling and Exit Values::
 * Looping Tests::
 * Test Timeouts::
@@ -869,9 +915,91 @@ easier for the developer to write, run, and analyse tests.
 * Subunit Support::
 
 
-File: check.info,  Node: Running Multiple Cases,  Next: No Fork Mode,  Prev: Advanced Features,  Up: Advanced Features
+File: check.info,  Node: Convenience Test Functions,  Next: Running Multiple Cases,  Prev: Advanced Features,  Up: Advanced Features
 
-4.1 Running Multiple Cases
+4.1 Convenience Test Functions
+==============================
+
+Using the `ck_assert' function for all tests can lead to lot of
+repetitive code that is hard to read.  For your convenience Check
+provides a set of functions (actually macros) for testing often used
+conditions.
+
+`ck_abort'
+     Unconditionally fails test with default message.
+
+`ck_abort_msg'
+     Unconditionally fails test with user supplied message.
+
+`ck_assert'
+     Fails test if supplied condition evaluates to false.
+
+`ck_assert_msg'
+     Fails test if supplied condition evaluates to false and displays
+     user provided message.
+
+`ck_assert_int_eq'
+`ck_assert_int_ne'
+`ck_assert_int_lt'
+`ck_assert_int_le'
+`ck_assert_int_gt'
+`ck_assert_int_ge'
+     Compares two signed integer values (`intmax_t') and displays
+     predefined message with condition and values of both input
+     parameters on failure.  The operator used for comparison is
+     different for each function and is indicated by the last two
+     letters of the function name.  The abbreviations `eq', `ne', `lt',
+     `le', `gt', and `ge' correspond to `==', `!=', `<', `<=', `>', and
+     `>=' respectively.
+
+`ck_assert_uint_eq'
+`ck_assert_uint_ne'
+`ck_assert_uint_lt'
+`ck_assert_uint_le'
+`ck_assert_uint_gt'
+`ck_assert_uint_ge'
+     Similar to `ck_assert_int_*', but compares two unsigned integer
+     values (`uintmax_t') instead.
+
+`ck_assert_str_eq'
+`ck_assert_str_ne'
+`ck_assert_str_lt'
+`ck_assert_str_le'
+`ck_assert_str_gt'
+`ck_assert_str_ge'
+     Compares two null-terminated `char *' string values, using the
+     `strcmp()' function internally, and displays predefined message
+     with condition and input parameter values on failure.  The
+     comparison operator is again indicated by last two letters of the
+     function name.  `ck_assert_str_lt(a, b)' will pass if the unsigned
+     numerical value of the character string `a' is less than that of
+     `b'.
+
+`ck_assert_ptr_eq'
+`ck_assert_ptr_ne'
+     Compares two pointers and displays predefined message with
+     condition and values of both input parameters on failure.  The
+     operator used for comparison is different for each function and is
+     indicated by the last two letters of the function name.  The
+     abbreviations `eq' and `ne' correspond to `==' and `!='
+     respectively.
+
+`fail'
+     (Deprecated) Unconditionally fails test with user supplied message.
+
+`fail_if'
+     (Deprecated) Fails test if supplied condition evaluates to true and
+     displays user provided message.
+
+`fail_unless'
+     (Deprecated) Fails test if supplied condition evaluates to false
+     and displays user provided message.
+
+
+
+File: check.info,  Node: Running Multiple Cases,  Next: No Fork Mode,  Prev: Convenience Test Functions,  Up: Advanced Features
+
+4.2 Running Multiple Cases
 ==========================
 
 What happens if we pass `-1' as the `amount' in `money_create()'?  What
@@ -880,16 +1008,27 @@ limits, we should also test what happens when we create `Money' where
 `amount == 0'.  Let's put these in a separate test case called "Limits"
 so that `money_suite' is changed like so:
 
-     --- tests/check_money.3.c	2009-09-23 20:44:00.000000000 +1000
-     +++ tests/check_money.6.c	2009-09-23 20:44:00.000000000 +1000
-     @@ -14,6 +14,23 @@
+     --- tests/check_money.3.c	2014-01-20 19:20:40.597732000 -0500
+     +++ tests/check_money.6.c	2014-01-20 19:20:40.597732000 -0500
+     @@ -1,38 +1,63 @@
+      #include <stdlib.h>
+      #include <check.h>
+      #include "../src/money.h"
+
+      START_TEST (test_money_create)
+      {
+        Money *m;
+        m = money_create (5, "USD");
+        ck_assert_int_eq (money_amount (m), 5);
+        ck_assert_str_eq (money_currency (m), "USD");
+        money_free (m);
       }
       END_TEST
 
      +START_TEST (test_money_create_neg)
      +{
      +  Money *m = money_create (-1, "USD");
-     +  fail_unless (m == NULL,
+     +  ck_assert_msg (m == NULL,
      +	       "NULL should be returned on attempt to create with "
      +	       "a negative amount");
      +}
@@ -898,15 +1037,20 @@ so that `money_suite' is changed like so:
      +START_TEST (test_money_create_zero)
      +{
      +  Money *m = money_create (0, "USD");
-     +  fail_unless (money_amount (m) == 0,
-     +	       "Zero is a valid amount of money");
+     +  if(money_amount (m) != 0)
+     +  {
+     +    ck_abort_msg("Zero is a valid amount of money");
+     +  }
      +}
      +END_TEST
      +
       Suite *
       money_suite (void)
       {
-     @@ -24,6 +41,12 @@
+        Suite *s = suite_create ("Money");
+
+        /* Core test case */
+        TCase *tc_core = tcase_create ("Core");
         tcase_add_test (tc_core, test_money_create);
         suite_add_tcase (s, tc_core);
 
@@ -919,14 +1063,35 @@ so that `money_suite' is changed like so:
         return s;
       }
 
+      int
+      main (void)
+      {
+        int number_failed;
+        Suite *s = money_suite ();
+        SRunner *sr = srunner_create (s);
+        srunner_run_all (sr, CK_NORMAL);
+        number_failed = srunner_ntests_failed (sr);
+        srunner_free (sr);
+        return (number_failed == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
+      }
+
    Now we can rerun our suite, and fix the problem(s). Note that errors
 in the "Core" test case will be reported as "Core", and errors in the
 "Limits" test case will be reported as "Limits", giving you additional
 information about where things broke.
 
-     --- src/money.5.c	2009-09-23 20:44:00.000000000 +1000
-     +++ src/money.6.c	2009-09-23 20:44:00.000000000 +1000
-     @@ -10,6 +10,11 @@
+     --- src/money.5.c	2014-01-20 19:20:40.701732002 -0500
+     +++ src/money.6.c	2014-01-20 19:20:40.701732002 -0500
+     @@ -1,41 +1,46 @@
+      #include <stdlib.h>
+      #include "money.h"
+
+      struct Money
+      {
+        int amount;
+        char *currency;
+      };
+
       Money *
       money_create (int amount, char *currency)
       {
@@ -938,11 +1103,37 @@ information about where things broke.
         Money *m = malloc (sizeof (Money));
         if (m == NULL)
           {
+            return NULL;
+          }
+
+        m->amount = amount;
+        m->currency = currency;
+        return m;
+      }
+
+      int
+      money_amount (Money * m)
+      {
+        return m->amount;
+      }
+
+      char *
+      money_currency (Money * m)
+      {
+        return m->currency;
+      }
+
+      void
+      money_free (Money * m)
+      {
+        free (m);
+        return;
+      }
 
 
 File: check.info,  Node: No Fork Mode,  Next: Test Fixtures,  Prev: Running Multiple Cases,  Up: Advanced Features
 
-4.2 No Fork Mode
+4.3 No Fork Mode
 ================
 
 Check normally forks to create a separate address space.  This allows a
@@ -958,7 +1149,6 @@ following:
   2. Explicitly define the fork status through the use of the following
      function:
 
-
      void srunner_set_fork_status (SRunner * sr, enum fork_status fstat);
 
    The enum `fork_status' allows the `fstat' parameter to assume the
@@ -969,7 +1159,7 @@ variable.
 
 File: check.info,  Node: Test Fixtures,  Next: Multiple Suites in one SRunner,  Prev: No Fork Mode,  Up: Advanced Features
 
-4.3 Test Fixtures
+4.4 Test Fixtures
 =================
 
 We may want multiple tests that all use the same Money.  In such cases,
@@ -990,20 +1180,22 @@ Checked fixtures
      `teardown()' function is run, if defined.  Since they run inside
      the forked address space, if checked fixtures signal or otherwise
      fail, they will be caught and reported by the `SRunner'.  A
-     checked `teardown()' fixture will run even if the unit test fails.
+     checked `teardown()' fixture will not run if the unit test fails.
 
 Unchecked fixtures
      are run in the same address space as the test program. Therefore
      they may not signal or exit, but may use the fail functions. The
      unchecked `setup()', if defined, is run before the test case is
      started. The unchecked `teardown()', if defined, is run after the
-     test case is done.
+     test case is done. An unchecked `teardown()' fixture will run even
+     if a unit test fails.
 
-   So for a test case that contains `check_one()' and `check_two()'
-unit tests, `checked_setup()'/`checked_teardown()' checked fixtures, and
+   An important  difference is that the checked fixtures are run once
+per unit test and the unchecked fixtures are run once per test case.
+So for a test case that contains `check_one()' and `check_two()' unit
+tests, `checked_setup()'/`checked_teardown()' checked fixtures, and
 `unchecked_setup()'/`unchecked_teardown()' unchecked fixtures, the
 control flow would be:
-
      unchecked_setup();
      fork();
      checked_setup();
@@ -1025,7 +1217,7 @@ control flow would be:
 
 File: check.info,  Node: Test Fixture Examples,  Next: Checked vs Unchecked Fixtures,  Prev: Test Fixtures,  Up: Test Fixtures
 
-4.3.1 Test Fixture Examples
+4.4.1 Test Fixture Examples
 ---------------------------
 
 We create a test fixture in Check as follows:
@@ -1044,11 +1236,12 @@ We create a test fixture in Check as follows:
 
    Note that the functions used for setup and teardown do not need to be
 named `setup()' and `teardown()', but they must take `void' and return
-`void'.  We'll update `check_money.c' as follows:
+`void'.  We'll update `check_money.c' with the following patch:
 
-     --- tests/check_money.6.c	2009-09-23 20:44:00.000000000 +1000
-     +++ tests/check_money.7.c	2009-09-23 20:44:00.000000000 +1000
-     @@ -2,15 +2,26 @@
+     --- tests/check_money.6.c	2014-01-20 19:20:40.597732000 -0500
+     +++ tests/check_money.7.c	2014-01-20 19:20:40.597732000 -0500
+     @@ -1,63 +1,75 @@
+      #include <stdlib.h>
       #include <check.h>
       #include "../src/money.h"
 
@@ -1070,17 +1263,37 @@ named `setup()' and `teardown()', but they must take `void' and return
       {
      -  Money *m;
      -  m = money_create (5, "USD");
-     -  fail_unless (money_amount (m) == 5,
-     +  fail_unless (money_amount (five_dollars) == 5,
-      	       "Amount not set correctly on creation");
-     -  fail_unless (strcmp (money_currency (m), "USD") == 0,
-     +  fail_unless (strcmp (money_currency (five_dollars), "USD") == 0,
-      	       "Currency not set correctly on creation");
+     -  ck_assert_int_eq (money_amount (m), 5);
+     -  ck_assert_str_eq (money_currency (m), "USD");
      -  money_free (m);
+     +  ck_assert_int_eq (money_amount (five_dollars), 5);
+     +  ck_assert_str_eq (money_currency (five_dollars), "USD");
       }
       END_TEST
 
-     @@ -38,6 +49,7 @@
+      START_TEST (test_money_create_neg)
+      {
+        Money *m = money_create (-1, "USD");
+        ck_assert_msg (m == NULL,
+      	       "NULL should be returned on attempt to create with "
+      	       "a negative amount");
+      }
+      END_TEST
+
+      START_TEST (test_money_create_zero)
+      {
+        Money *m = money_create (0, "USD");
+        if(money_amount (m) != 0)
+        {
+          ck_abort_msg("Zero is a valid amount of money");
+        }
+      }
+      END_TEST
+
+      Suite *
+      money_suite (void)
+      {
+        Suite *s = suite_create ("Money");
 
         /* Core test case */
         TCase *tc_core = tcase_create ("Core");
@@ -1088,10 +1301,31 @@ named `setup()' and `teardown()', but they must take `void' and return
         tcase_add_test (tc_core, test_money_create);
         suite_add_tcase (s, tc_core);
 
+        /* Limits test case */
+        TCase *tc_limits = tcase_create ("Limits");
+        tcase_add_test (tc_limits, test_money_create_neg);
+        tcase_add_test (tc_limits, test_money_create_zero);
+        suite_add_tcase (s, tc_limits);
+
+        return s;
+      }
+
+      int
+      main (void)
+      {
+        int number_failed;
+        Suite *s = money_suite ();
+        SRunner *sr = srunner_create (s);
+        srunner_run_all (sr, CK_NORMAL);
+        number_failed = srunner_ntests_failed (sr);
+        srunner_free (sr);
+        return (number_failed == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
+      }
+
 
 File: check.info,  Node: Checked vs Unchecked Fixtures,  Prev: Test Fixture Examples,  Up: Test Fixtures
 
-4.3.2 Checked vs Unchecked Fixtures
+4.4.2 Checked vs Unchecked Fixtures
 -----------------------------------
 
 Checked fixtures run once for each unit test in a test case, and so
@@ -1118,7 +1352,7 @@ effects, since the `setup()' is run before each unit test.  There is an
 exception for side effects to the total environment in which the test
 program lives: for example, if the `setup()' function initializes a
 file that a unit test then changes, the combination of the `teardown()'
-function and `setup()' fuction must be able to restore the environment
+function and `setup()' function must be able to restore the environment
 for the next unit test.
 
    If the `setup()' function in a fixture fails, in either checked or
@@ -1127,9 +1361,9 @@ unchecked fixtures, the unit tests for the test case, and the
 will be created and reported to the `SRunner'.
 
 
-File: check.info,  Node: Multiple Suites in one SRunner,  Next: Testing Signal Handling and Exit Values,  Prev: Test Fixtures,  Up: Advanced Features
+File: check.info,  Node: Multiple Suites in one SRunner,  Next: Selective Running of Tests,  Prev: Test Fixtures,  Up: Advanced Features
 
-4.4 Multiple Suites in one SRunner
+4.5 Multiple Suites in one SRunner
 ==================================
 
 In a large program, it will be convenient to create multiple suites,
@@ -1139,7 +1373,6 @@ one main test program, and use it to run multiple suites.  The Check
 test suite provides an example of how to do this. The main testing
 program is called `check_check', and has a header file that declares
 suite creation functions for all the module tests:
-
      Suite *make_sub_suite (void);
      Suite *make_sub2_suite (void);
      Suite *make_master_suite (void);
@@ -1154,7 +1387,6 @@ suite creation functions for all the module tests:
    The function `srunner_add_suite()' is used to add additional suites
 to an `SRunner'.  Here is the code that sets up and runs the `SRunner'
 in the `main()' function in `check_check_main.c':
-
      SRunner *sr;
      sr = srunner_create (make_master_suite ());
      srunner_add_suite (sr, make_list_suite ());
@@ -1166,9 +1398,24 @@ in the `main()' function in `check_check_main.c':
      srunner_add_suite (sr, make_pack_suite ());
 
 
-File: check.info,  Node: Testing Signal Handling and Exit Values,  Next: Looping Tests,  Prev: Multiple Suites in one SRunner,  Up: Advanced Features
+File: check.info,  Node: Selective Running of Tests,  Next: Testing Signal Handling and Exit Values,  Prev: Multiple Suites in one SRunner,  Up: Advanced Features
 
-4.5 Testing Signal Handling and Exit Values
+4.6 Selective Running of Tests
+==============================
+
+After adding a couple of suites and some test cases in each, it is
+sometimes practical to be able to run only one suite, or one specific
+test case, without recompiling the test code. There are two environment
+variables available that offers this ability, `CK_RUN_SUITE' and
+`CK_RUN_CASE'. Just set the value to the name of the suite and/or test
+case you want to run. These environment variables can also be a good
+integration tool for running specific tests from within another tool,
+e.g. an IDE.
+
+
+File: check.info,  Node: Testing Signal Handling and Exit Values,  Next: Looping Tests,  Prev: Selective Running of Tests,  Up: Advanced Features
+
+4.7 Testing Signal Handling and Exit Values
 ===========================================
 
 To enable testing of signal handling, there is a function
@@ -1192,7 +1439,7 @@ exits early this is logged as an error.
 
 File: check.info,  Node: Looping Tests,  Next: Test Timeouts,  Prev: Testing Signal Handling and Exit Values,  Up: Advanced Features
 
-4.6 Looping Tests
+4.8 Looping Tests
 =================
 
 Looping tests are tests that are called with a new context for each
@@ -1212,7 +1459,6 @@ which caused the failure is available in error messages and logs.
    Start and end values for the loop are supplied when adding the test.
 The values are used as in a normal `for' loop.  Below is some
 pseudo-code to show the concept:
-
      for (_i = tfun->loop_start; _i < tfun->loop_end; _i++)
      {
        fork();      /* New context */
@@ -1221,12 +1467,11 @@ pseudo-code to show the concept:
      }
 
    An example of looping test usage follows:
-
      static const int primes[5] = {2,3,5,7,11};
 
      START_TEST (check_is_prime)
      {
-       fail_unless (is_prime (primes[_i]));
+       ck_assert (is_prime (primes[_i]));
      }
      END_TEST
 
@@ -1240,7 +1485,7 @@ forking.  This means that only the first error will be shown.
 
 File: check.info,  Node: Test Timeouts,  Next: Determining Test Coverage,  Prev: Looping Tests,  Up: Advanced Features
 
-4.7 Test Timeouts
+4.9 Test Timeouts
 =================
 
 To be certain that a test won't hang indefinitely, all tests are run
@@ -1256,15 +1501,17 @@ to use the `CK_TIMEOUT_MULTIPLIER' environment variable, which
 multiplies all timeouts, including those set with
 `tcase_set_timeout()', with the supplied integer value. All timeout
 arguments are in seconds and a timeout of 0 seconds turns off the
-timeout functionality.
+timeout functionality. On systems that support it, the timeout can be
+specified using a nanosecond precision. Otherwise, second precision is
+used.
 
    Test timeouts are only available in CK_FORK mode.
 
 
 File: check.info,  Node: Determining Test Coverage,  Next: Test Logging,  Prev: Test Timeouts,  Up: Advanced Features
 
-4.8 Determining Test Coverage
-=============================
+4.10 Determining Test Coverage
+==============================
 
 The term "code coverage" refers to the extent that the statements of a
 program are executed during a run.  Thus, "test coverage" refers to
@@ -1284,7 +1531,6 @@ other compilers should provide similar facilities.
    Using `gcc', first enable test coverage profiling when building your
 source by specifying the `-fprofile-arcs' and `-ftest-coverage'
 switches:
-
      $ gcc -g -Wall -fprofile-arcs -ftest-coverage -o foo foo.c foo_check.c
 
    You will see that an additional `.gcno' file is created for each
@@ -1292,11 +1538,9 @@ switches:
 file is created for each `.gcno' file.  These contain the coverage data
 in a raw format.  To combine this information and a source file into a
 more readable format you can use the `gcov' utility:
-
      $ gcov foo.c
 
    This will produce the file `foo.c.gcov' which looks like this:
-
           -:   41:     * object */
          18:   42:    if (ht->table[p] != NULL) {
           -:   43:        /* replaces the current entry */
@@ -1320,13 +1564,12 @@ please refer to the relevant manuals.
 
 File: check.info,  Node: Test Logging,  Next: Subunit Support,  Prev: Determining Test Coverage,  Up: Advanced Features
 
-4.9 Test Logging
-================
+4.11 Test Logging
+=================
 
 Check supports an operation to log the results of a test run.  To use
 test logging, call the `srunner_set_log()' function with the name of
 the log file you wish to create:
-
      SRunner *sr;
      sr = srunner_create (make_s1_suite ());
      srunner_add_suite (sr, make_s2_suite ());
@@ -1338,7 +1581,6 @@ the log file you wish to create:
 ignored during test logging; the log will contain a result entry,
 organized by suite, for every test run.  Here is an example of test log
 output:
-
      Running suite S1
      ex_log_output.c:8:P:Core:test_pass: Test passed
      ex_log_output.c:14:F:Core:test_fail: Failure
@@ -1349,50 +1591,61 @@ output:
      Results for all suites run:
      50%: Checks: 4, Failures: 1, Errors: 1
 
+   Another way to enable test logging is to use the `CK_LOG_FILE_NAME'
+environment variable. When set tests will be logged to the specified
+file name.  If log file is specified with both `CK_LOG_FILE_NAME' and
+`srunner_set_log()', the name provided to `srunner_set_log()' will be
+used.
+
 * Menu:
 
 * XML Logging::
+* TAP Logging::
 
 
 File: check.info,  Node: XML Logging,  Prev: Test Logging,  Up: Test Logging
 
-4.9.1 XML Logging
------------------
+4.11.1 XML Logging
+------------------
 
 The log can also be written in XML.  The following functions define the
 interface for XML logs:
-
      void srunner_set_xml (SRunner *sr, const char *fname);
      int srunner_has_xml (SRunner *sr);
      const char *srunner_xml_fname (SRunner *sr);
 
-   The only thing you need to do to get XML output is call
-`srunner_set_xml()' before the tests are run.  Here is an example of
-the same log output as before but in XML:
-
+   XML output is enabled by a call to `srunner_set_xml()' before the
+tests are run. Here is an example of an XML log:
      <?xml version="1.0"?>
+     <?xml-stylesheet type="text/xsl" href="http://check.sourceforge.net/xml/check_unittest.xslt"?>
      <testsuites xmlns="http://check.sourceforge.net/ns">
-       <datetime>2004-08-20 12:53:32</datetime>
+       <datetime>2012-10-19 09:56:06</datetime>
        <suite>
          <title>S1</title>
          <test result="success">
            <path>.</path>
-           <fn>ex_xml_output.c:8</fn>
+           <fn>ex_xml_output.c:10</fn>
            <id>test_pass</id>
+           <iteration>0</iteration>
+           <duration>0.000013</duration>
            <description>Core</description>
            <message>Passed</message>
          </test>
          <test result="failure">
            <path>.</path>
-           <fn>ex_xml_output.c:14</fn>
+           <fn>ex_xml_output.c:16</fn>
            <id>test_fail</id>
+           <iteration>0</iteration>
+           <duration>-1.000000</duration>
            <description>Core</description>
            <message>Failure</message>
          </test>
          <test result="error">
            <path>.</path>
-           <fn>ex_xml_output.c:18</fn>
+           <fn>ex_xml_output.c:20</fn>
            <id>test_exit</id>
+           <iteration>0</iteration>
+           <duration>-1.000000</duration>
            <description>Core</description>
            <message>Early exit with return value 1</message>
          </test>
@@ -1401,36 +1654,117 @@ the same log output as before but in XML:
          <title>S2</title>
          <test result="success">
            <path>.</path>
-           <fn>ex_xml_output.c:26</fn>
+           <fn>ex_xml_output.c:28</fn>
            <id>test_pass2</id>
+           <iteration>0</iteration>
+           <duration>0.000011</duration>
            <description>Core</description>
            <message>Passed</message>
          </test>
+         <test result="failure">
+           <path>.</path>
+           <fn>ex_xml_output.c:34</fn>
+           <id>test_loop</id>
+           <iteration>0</iteration>
+           <duration>-1.000000</duration>
+           <description>Core</description>
+           <message>Iteration 0 failed</message>
+         </test>
+         <test result="success">
+           <path>.</path>
+           <fn>ex_xml_output.c:34</fn>
+           <id>test_loop</id>
+           <iteration>1</iteration>
+           <duration>0.000010</duration>
+           <description>Core</description>
+           <message>Passed</message>
+         </test>
+         <test result="failure">
+           <path>.</path>
+           <fn>ex_xml_output.c:34</fn>
+           <id>test_loop</id>
+           <iteration>2</iteration>
+           <duration>-1.000000</duration>
+           <description>Core</description>
+           <message>Iteration 2 failed</message>
+         </test>
        </suite>
-       <duration>0.304875</duration>
+       <suite>
+         <title>XML escape &quot; &apos; &lt; &gt; &amp; tests</title>
+         <test result="failure">
+           <path>.</path>
+           <fn>ex_xml_output.c:40</fn>
+           <id>test_xml_esc_fail_msg</id>
+           <iteration>0</iteration>
+           <duration>-1.000000</duration>
+           <description>description &quot; &apos; &lt; &gt; &amp;</description>
+           <message>fail &quot; &apos; &lt; &gt; &amp; message</message>
+         </test>
+       </suite>
+       <duration>0.001610</duration>
      </testsuites>
+
+   XML logging can be enabled by an environment variable as well. If
+`CK_XML_LOG_FILE_NAME' environment variable is set, the XML test log
+will be written to specified file name. If XML log file is specified
+with both `CK_XML_LOG_FILE_NAME' and `srunner_set_xml()', the name
+provided to `srunner_set_xml()' will be used.
+
+   If both plain text and XML log files are specified, by any of above
+methods, then check will log to both files. In other words logging in
+plain text and XML format simultaneously is supported.
+
+
+File: check.info,  Node: TAP Logging,  Prev: Test Logging,  Up: Test Logging
+
+4.11.2 TAP Logging
+------------------
+
+The log can also be written in Test Anything Protocol (TAP) format.
+Refer to the TAP Specification (http://podwiki.hexten.net/TAP/TAP.html)
+for information on valid TAP output and parsers of TAP. The following
+functions define the interface for TAP logs:
+     void srunner_set_tap (SRunner *sr, const char *fname);
+     int srunner_has_tap (SRunner *sr);
+     const char *srunner_tap_fname (SRunner *sr);
+
+   TAP output is enabled by a call to `srunner_set_tap()' before the
+tests are run. Here is an example of an TAP log:
+     ok 1 - mytests.c:test_suite_name:my_test_1: Passed
+     ok 2 - mytests.c:test_suite_name:my_test_2: Passed
+     not ok 3 - mytests.c:test_suite_name:my_test_3: Foo happened
+     ok 4 - mytests.c:test_suite_name:my_test_1: Passed
+     1..4
+
+   TAP logging can be enabled by an environment variable as well. If
+`CK_TAP_LOG_FILE_NAME' environment variable is set, the TAP test log
+will be written to specified file name. If TAP log file is specified
+with both `CK_TAP_LOG_FILE_NAME' and `srunner_set_tap()', the name
+provided to `srunner_set_tap()' will be used.
+
+   If both plain text and TAP log files are specified, by any of above
+methods, then check will log to both files. In other words logging in
+plain text and TAP format simultaneously is supported.
 
 
 File: check.info,  Node: Subunit Support,  Prev: Test Logging,  Up: Advanced Features
 
-4.10 Subunit Support
+4.12 Subunit Support
 ====================
 
 Check supports running test suites with subunit output. This can be
 useful to combine test results from multiple languages, or to perform
 programmatic analysis on the results of multiple check test suites or
-otherise handle test results in a programmatic manner. Using subunit
+otherwise handle test results in a programmatic manner. Using subunit
 with check is very straight forward. There are two steps: 1) In your
 check test suite driver pass 'CK_SUBUNIT' as the output mode for your
 srunner.
-
      SRunner *sr;
      sr = srunner_create (make_s1_suite ());
      srunner_add_suite (sr, make_s2_suite ());
      srunner_run_all (sr, CK_SUBUNIT);
    2) Setup your main language test runner to run your check based test
 executable. For instance using python:
-
 
      import subunit
 
@@ -1479,7 +1813,6 @@ File: check.info,  Node: AM_PATH_CHECK,  Next: Copying This Manual,  Prev: Concl
 The `AM_PATH_CHECK()' macro is defined in the file `check.m4' which is
 installed by Check.  It has some optional parameters that you might
 find useful in your `configure.ac':
-
 AM_PATH_CHECK([MINIMUM-VERSION,
                [ACTION-IF-FOUND[,ACTION-IF-NOT-FOUND]]])
 
@@ -1962,76 +2295,144 @@ Index
  [index ]
 * Menu:
 
-* AM_PATH_CHECK():                       AM_PATH_CHECK.       (line   6)
+* AM_PATH_CHECK:                         AM_PATH_CHECK.       (line   6)
+* ck_abort <1>:                          Convenience Test Functions.
+                                                              (line  11)
+* ck_abort:                              Test a Little.       (line  67)
+* ck_abort_msg <1>:                      Convenience Test Functions.
+                                                              (line  14)
+* ck_abort_msg:                          Test a Little.       (line  67)
+* ck_assert <1>:                         Convenience Test Functions.
+                                                              (line  17)
+* ck_assert:                             Test a Little.       (line  51)
+* ck_assert_int_eq <1>:                  Convenience Test Functions.
+                                                              (line  24)
+* ck_assert_int_eq:                      Test a Little.       (line  40)
+* ck_assert_int_ge:                      Convenience Test Functions.
+                                                              (line  29)
+* ck_assert_int_gt:                      Convenience Test Functions.
+                                                              (line  28)
+* ck_assert_int_le:                      Convenience Test Functions.
+                                                              (line  27)
+* ck_assert_int_lt:                      Convenience Test Functions.
+                                                              (line  26)
+* ck_assert_int_ne:                      Convenience Test Functions.
+                                                              (line  25)
+* ck_assert_msg <1>:                     Convenience Test Functions.
+                                                              (line  20)
+* ck_assert_msg:                         Test a Little.       (line  57)
+* ck_assert_ptr_eq:                      Convenience Test Functions.
+                                                              (line  61)
+* ck_assert_ptr_ne:                      Convenience Test Functions.
+                                                              (line  62)
+* ck_assert_str_eq <1>:                  Convenience Test Functions.
+                                                              (line  47)
+* ck_assert_str_eq:                      Test a Little.       (line  40)
+* ck_assert_str_ge:                      Convenience Test Functions.
+                                                              (line  52)
+* ck_assert_str_gt:                      Convenience Test Functions.
+                                                              (line  51)
+* ck_assert_str_le:                      Convenience Test Functions.
+                                                              (line  50)
+* ck_assert_str_lt:                      Convenience Test Functions.
+                                                              (line  49)
+* ck_assert_str_ne:                      Convenience Test Functions.
+                                                              (line  48)
+* ck_assert_uint_eq:                     Convenience Test Functions.
+                                                              (line  38)
+* ck_assert_uint_ge:                     Convenience Test Functions.
+                                                              (line  43)
+* ck_assert_uint_gt:                     Convenience Test Functions.
+                                                              (line  42)
+* ck_assert_uint_le:                     Convenience Test Functions.
+                                                              (line  41)
+* ck_assert_uint_lt:                     Convenience Test Functions.
+                                                              (line  40)
+* ck_assert_uint_ne:                     Convenience Test Functions.
+                                                              (line  39)
 * CK_DEFAULT_TIMEOUT:                    Test Timeouts.       (line   6)
-* CK_ENV:                                SRunner Output.      (line  42)
+* CK_ENV:                                SRunner Output.      (line  54)
 * CK_FORK:                               No Fork Mode.        (line  14)
-* CK_MINIMAL:                            SRunner Output.      (line  31)
-* CK_NORMAL:                             SRunner Output.      (line  35)
-* CK_SILENT:                             SRunner Output.      (line  26)
-* CK_SUBUNIT:                            SRunner Output.      (line  48)
+* CK_MINIMAL:                            SRunner Output.      (line  43)
+* CK_NORMAL:                             SRunner Output.      (line  47)
+* CK_RUN_CASE:                           Selective Running of Tests.
+                                                              (line   6)
+* CK_RUN_SUITE:                          Selective Running of Tests.
+                                                              (line   6)
+* CK_SILENT:                             SRunner Output.      (line  38)
+* CK_SUBUNIT:                            SRunner Output.      (line  60)
 * CK_TIMEOUT_MULTIPLIER:                 Test Timeouts.       (line   6)
-* CK_VERBOSE:                            SRunner Output.      (line  39)
-* CK_VERBOSITY:                          SRunner Output.      (line  42)
-* fail():                                Test a Little.       (line  49)
-* fail_if():                             Test a Little.       (line  59)
-* fail_unless():                         Test a Little.       (line  40)
+* CK_VERBOSE:                            SRunner Output.      (line  51)
+* CK_VERBOSITY:                          SRunner Output.      (line  54)
+* fail:                                  Convenience Test Functions.
+                                                              (line  70)
+* fail_if:                               Convenience Test Functions.
+                                                              (line  73)
+* fail_unless:                           Convenience Test Functions.
+                                                              (line  77)
 * FDL, GNU Free Documentation License:   GNU Free Documentation License.
                                                               (line   6)
 * frameworks:                            Other Frameworks for C.
                                                               (line   6)
 * introduction:                          Introduction.        (line   6)
-* mark_point():                          SRunner Output.      (line 113)
+* mark_point:                            SRunner Output.      (line 135)
 * other frameworks:                      Other Frameworks for C.
                                                               (line   6)
-* srunner_add_suite():                   Multiple Suites in one SRunner.
-                                                              (line  25)
-* srunner_has_xml():                     XML Logging.         (line   6)
-* srunner_run_all():                     SRunner Output.      (line   6)
-* srunner_set_fork_status():             No Fork Mode.        (line  14)
-* srunner_set_log():                     Test Logging.        (line   6)
-* srunner_set_xml():                     XML Logging.         (line   6)
-* srunner_xml_fname():                   XML Logging.         (line   6)
-* tcase_add_checked_fixture():           Test Fixture Examples.
+* srunner_add_suite:                     Multiple Suites in one SRunner.
+                                                              (line  24)
+* srunner_has_tap:                       TAP Logging.         (line   6)
+* srunner_has_xml:                       XML Logging.         (line   6)
+* srunner_run:                           SRunner Output.      (line   6)
+* srunner_run_all:                       SRunner Output.      (line   6)
+* srunner_set_fork_status:               No Fork Mode.        (line  14)
+* srunner_set_log:                       Test Logging.        (line   6)
+* srunner_set_tap:                       TAP Logging.         (line   6)
+* srunner_set_xml:                       XML Logging.         (line   6)
+* srunner_tap_fname:                     TAP Logging.         (line   6)
+* srunner_xml_fname:                     XML Logging.         (line   6)
+* tcase_add_checked_fixture:             Test Fixture Examples.
                                                               (line  13)
-* tcase_add_exit_test():                 Testing Signal Handling and Exit Values.
+* tcase_add_exit_test:                   Testing Signal Handling and Exit Values.
                                                               (line  15)
-* tcase_add_loop_test():                 Looping Tests.       (line  13)
-* tcase_add_test_raise_signal():         Testing Signal Handling and Exit Values.
+* tcase_add_loop_test:                   Looping Tests.       (line  13)
+* tcase_add_test_raise_signal:           Testing Signal Handling and Exit Values.
                                                               (line   6)
-* tcase_set_timeout():                   Test Timeouts.       (line   6)
+* tcase_set_timeout:                     Test Timeouts.       (line   6)
 
 
 
 Tag Table:
-Node: Top768
-Node: Introduction2573
-Node: Unit Testing in C4709
-Node: Other Frameworks for C6478
-Node: Tutorial10265
-Node: How to Write a Test11040
-Node: Setting Up the Money Build11691
-Node: Test a Little16919
-Node: Creating a Suite21486
-Node: SRunner Output25671
-Node: Advanced Features31125
-Node: Running Multiple Cases31727
-Node: No Fork Mode33950
-Node: Test Fixtures34966
-Node: Test Fixture Examples37033
-Node: Checked vs Unchecked Fixtures39195
-Node: Multiple Suites in one SRunner41059
-Node: Testing Signal Handling and Exit Values42719
-Node: Looping Tests43826
-Node: Test Timeouts45538
-Node: Determining Test Coverage46568
-Node: Test Logging49044
-Node: XML Logging50241
-Node: Subunit Support52006
-Node: Conclusion and References53472
-Node: AM_PATH_CHECK54254
-Node: Copying This Manual55694
-Node: GNU Free Documentation License55930
-Node: Index78339
+Node: Top783
+Node: Introduction2681
+Node: Unit Testing in C4817
+Node: Other Frameworks for C6681
+Node: Tutorial10610
+Node: How to Write a Test11385
+Node: Setting Up the Money Build12034
+Node: Test a Little17296
+Node: Creating a Suite22426
+Node: SRunner Output26833
+Node: Advanced Features33369
+Node: Convenience Test Functions34033
+Node: Running Multiple Cases36798
+Node: No Fork Mode40315
+Node: Test Fixtures41330
+Node: Test Fixture Examples43606
+Node: Checked vs Unchecked Fixtures46847
+Node: Multiple Suites in one SRunner48712
+Node: Selective Running of Tests50357
+Node: Testing Signal Handling and Exit Values51084
+Node: Looping Tests52187
+Node: Test Timeouts53895
+Node: Determining Test Coverage55049
+Node: Test Logging57524
+Node: XML Logging59024
+Node: TAP Logging63088
+Node: Subunit Support64494
+Node: Conclusion and References65959
+Node: AM_PATH_CHECK66741
+Node: Copying This Manual68180
+Node: GNU Free Documentation License68416
+Node: Index90825
 
 End Tag Table
