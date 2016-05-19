@@ -5,8 +5,8 @@
 #define TIMEOUT_TESTS_ENABLED 1
 #endif
 
-int sub_nfailed;
-int sub_ntests;
+static int sub_nfailed;
+static int sub_ntests;
 
 void fork_setup (void);
 void fork_teardown (void);
